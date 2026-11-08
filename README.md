@@ -43,8 +43,9 @@ make dist                       # static arm64 + armv7 binaries in dist/
 make deploy HOST=pi@raspberrypi.local   # copy and install on Raspberry Pi OS Lite
 ```
 
-Then open `http://emm.local`. Hardware advice (which Pi, which hub, why not a
-Pi 3 or Zero) is in [docs/HARDWARE.md](docs/HARDWARE.md).
+Then open `http://emm.local`. Hardware advice (which Pi, which hub, and a
+theoretical, untested caveat about wired Ethernet on a Pi 3) is in
+[docs/HARDWARE.md](docs/HARDWARE.md).
 
 ## Layout
 

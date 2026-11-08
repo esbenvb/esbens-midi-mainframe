@@ -1,0 +1,29 @@
+# Kernel options the appliance cannot work without. Format: SYMBOL ALLOWED[,ALLOWED]
+# (checked against the generated .config by image/check-kernel-config.sh)
+BLK_DEV_INITRD   y
+RD_GZIP          y
+DEVTMPFS         y
+TMPFS            y
+VFAT_FS          y
+NLS_ISO8859_1    y
+NLS_CODEPAGE_437 y
+# systemd
+CGROUPS          y
+INOTIFY_USER     y
+SIGNALFD         y
+TIMERFD          y
+EPOLL            y
+FHANDLE          y
+SECCOMP          y
+# USB MIDI
+USB_XHCI_HCD     y,m
+SND              y,m
+SND_RAWMIDI      y,m
+SND_USB_AUDIO    y,m
+# WiFi (AP + client) and Bluetooth
+CFG80211         y,m
+BRCMFMAC         y,m
+BT               y,m
+BT_HCIUART       y,m
+BT_HCIUART_BCM   y
+RFKILL           y,m

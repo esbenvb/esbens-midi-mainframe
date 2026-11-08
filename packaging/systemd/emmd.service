@@ -1,0 +1,41 @@
+[Unit]
+Description=Esben's MIDI Mainframe (MIDI router, RTP-MIDI and BLE-MIDI)
+After=local-fs.target dbus.service NetworkManager.service avahi-daemon.service bluetooth.service
+# emmd talks to all three but must come up even if one of them is missing or
+# slow (e.g. a board without Bluetooth), so these are Wants=, not Requires=.
+Wants=NetworkManager.service avahi-daemon.service bluetooth.service
+
+[Service]
+Type=simple
+
+# Default arguments. /etc/default/emmd may redefine EMMD_ARGS (the appliance
+# image does, to put state on the FAT32 boot partition). One flag per word.
+Environment="EMMD_ARGS=--boot-dir=/boot/firmware --state=/var/lib/emm/state.json --allow-power"
+EnvironmentFile=-/etc/default/emmd
+ExecStart=/usr/bin/emmd $EMMD_ARGS
+
+Restart=always
+RestartSec=2
+TimeoutStopSec=10
+
+# Creates /var/lib/emm (harmless on the appliance, where state lives on /boot).
+StateDirectory=emm
+
+# MIDI timing is a little steadier with a bit of priority over background work.
+Nice=-5
+
+# emmd needs root: it binds :80, writes /etc/NetworkManager and /etc/avahi,
+# opens /dev/snd/*, talks to the system D-Bus and reboots the machine.
+# That rules out ProtectSystem=/PrivateDevices=/ProtectKernel*, and those
+# options all need a mount namespace, which is not worth risking on the
+# appliance (its root filesystem is an initramfs). What is left is hardening
+# that does not touch the mount namespace:
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

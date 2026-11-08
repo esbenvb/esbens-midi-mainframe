@@ -1,0 +1,15 @@
+# build output
+/dist/
+/bin/
+*.test
+
+# local state when running the daemon from the repo
+/state.json
+/emm-state/
+
+# macOS
+.DS_Store
+
+# image build trees
+/image/output/
+/image/dl/

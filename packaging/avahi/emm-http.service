@@ -1,0 +1,13 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!-- Announces the EMM web interface as an HTTP service, so it shows up in
+     Bonjour/mDNS browsers. emm.local itself comes from avahi's own hostname
+     publishing. The RTP-MIDI services are written by emmd, one file per port,
+     into this same directory. -->
+<service-group>
+  <name replace-wildcards="yes">EMM on %h</name>
+  <service>
+    <type>_http._tcp</type>
+    <port>80</port>
+  </service>
+</service-group>

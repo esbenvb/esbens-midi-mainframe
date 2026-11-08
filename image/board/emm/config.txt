@@ -1,0 +1,27 @@
+# EMM appliance: Raspberry Pi firmware configuration.
+# Settings (WiFi, hostname, ...) live in emm.txt, not here. Leave this file alone
+# unless you know why you are changing it.
+#
+# The filters pick the right files for the board that is booting:
+#   [pi4] = Pi 4B, 400, CM4, CM4S      [pi5] = Pi 5, CM5
+# Not supported by this card: Pi 500/500+ and CM5 Lite. Their device trees are not
+# in the kernel this image is built from, so the card carries none for them.
+
+disable_splash=1
+
+[pi4]
+arm_64bit=1
+kernel=kernel8.img
+# The whole system is this one file, loaded into RAM right behind the kernel.
+initramfs rootfs-pi4.cpio.gz followkernel
+
+[pi5]
+kernel=kernel_2712.img
+initramfs rootfs-pi5.cpio.gz followkernel
+
+[all]
+# Notes:
+# - No dtoverlay= lines: the card carries no overlays. Bluetooth is probed by the
+#   kernel (krnbt defaults to on), so do NOT add dtoverlay=disable-bt.
+# - No gpu_mem= line: setting gpu_mem=16 would ask for the cut-down firmware
+#   (start4cd.elf), which is not on the card.

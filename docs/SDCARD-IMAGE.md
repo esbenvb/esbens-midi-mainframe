@@ -1,0 +1,105 @@
+# The appliance SD-card image
+
+The goal: copy a few files onto a FAT32 SD card, put it in a Pi, and EMM runs. No Linux partition, no installer, nothing on the card that a power cut can corrupt.
+
+> **Status: written, statically checked, never built or booted.** The tree in `image/` was assembled from Buildroot's documentation and source without a Linux build host or a Pi. Start with `image/build.sh --check-only` (minutes): it validates the configuration against the real Buildroot Kconfig. Treat the first full build and boot as bring-up work. The [UNVERIFIED](#unverified) list is the honest to-do list. The supported, tested path today is [Raspberry Pi OS + installer](INSTALL.md).
+
+## How it works
+
+```
+Pi 4/5 EEPROM bootloader
+  └─ reads the FAT32 partition: config.txt  ([pi4] / [pi5] sections)
+       ├─ loads  kernel8.img | kernel_2712.img     (Linux, built by Buildroot)
+       ├─ loads  bcm2711-rpi-*.dtb | bcm2712-*.dtb  (chosen by the firmware per board)
+       └─ loads  rootfs-pi4.cpio.gz | rootfs-pi5.cpio.gz  into RAM, right behind the kernel
+            (config.txt: "initramfs <file> followkernel")
+
+Linux unpacks the initramfs as its root filesystem (no root= on the command line)
+  └─ /init (Buildroot's script: mounts devtmpfs) → exec /sbin/init = systemd
+       ├─ fstab: /dev/mmcblk0p1 → /boot  (the same FAT32 partition, rw,sync)
+       ├─ NetworkManager, avahi-daemon, bluetoothd, wpa_supplicant (D-Bus activated)
+       └─ emmd  (reads /boot/emm.txt, keeps settings in /boot/emm/state.json)
+```
+
+The whole system is therefore **one file per board** that the Pi firmware loads, and `/etc`, `/var`, `/tmp` live in RAM. On the card there is nothing but FAT32. One zip serves both boards because the kernels and initramfs are named per board and `config.txt` filters on `[pi4]`/`[pi5]`. (`[pi4]` also matches Pi 400/CM4/CM4S and `[pi5]` also CM5; the build installs the device trees of exactly these boards: `bcm2711-rpi-4-b`, `-400`, `-cm4`, `-cm4s`, and `bcm2712-rpi-5-b`, `bcm2712d0-rpi-5-b`, `bcm2712-rpi-cm5-cm5io`, `bcm2712-rpi-cm5-cm4io`. The **Pi 500/500+ and the CM5 Lite are not supported**: the pinned kernel commit (Linux 6.6.28) has no device tree for them, so the card carries none. Supporting them would mean moving the kernel pin to a newer `rpi-6.6.y` commit that has `bcm2712-rpi-500` and `bcm2712-rpi-cm5l-*` (hash checking is on, so that commit also needs a `linux.hash` of its own), and adding the names to `BR2_LINUX_KERNEL_INTREE_DTS_NAME`.)
+
+### Why a separate initramfs file, and not "linked into the kernel"
+
+Buildroot can build the cpio archive into the kernel image (`BR2_TARGET_ROOTFS_INITRAMFS`). That forces a second kernel build pass per board, and makes every rootfs change a kernel change. The Pi firmware loads a separate file natively (`initramfs … followkernel` is the documented mechanism), so the kernel and the system update independently and the build stays simple. Its cost is one more file on the card.
+
+### Why one rootfs per board
+
+The Pi 4 and Pi 5 kernels differ (`bcm2711` vs `bcm2712` configuration, different `uname -r`), and the root filesystem carries the kernel modules (`/lib/modules/<release>`) for its own kernel. So Buildroot is run once per board, and each payload gets its own initramfs. The extra cost is a second full build; the two builds share the download cache.
+
+### Why no start4.elf for the Pi 5
+
+The Pi 4 loads its GPU firmware (`start4.elf`, `fixup4.dat`) from the card. The Pi 5 has its firmware in the EEPROM and only needs `config.txt` to mark the partition bootable (Raspberry Pi's `config.txt` documentation).
+
+## Building
+
+Requirements: Docker, and Go on the host (a full `build.sh` cross-compiles `emmd` there first, see `scripts/lib.sh`; with a prebuilt `dist/emmd-linux-arm64` and `--skip-emmd-build` Go is not needed; `--check-only` needs only Docker); **15–30 GB of free disk space in Docker's disk image**, about 8 GB of RAM given to Docker, and 1–2 hours *per board*. The build tree lives in Docker volumes (`emm-buildroot-out`, `emm-buildroot-dl`), not in the repository, because bind mounts are slow on macOS; `image/build.sh --clean` removes them.
+
+```bash
+image/build.sh --check-only        # first: validate the configuration, minutes, < 1 GB
+image/build.sh                     # then: both boards → dist/emm-sdcard-<version>.zip
+image/build.sh --boards rpi5       # one board
+image/build.sh --skip-emmd-build   # use the existing dist/emmd-linux-arm64 (no Go needed)
+```
+
+What `build.sh` does: cross-compiles `emmd` (`dist/emmd-linux-arm64`), builds the container from `image/Dockerfile`, downloads and checksum-verifies Buildroot 2025.02.19 (the LTS; its SHA-256 is pinned in `build.sh`), and for each board runs inside the container:
+
+1. `make emm_<board>_defconfig` and **`image/check-defconfig.sh`**: Kconfig silently drops symbols whose dependencies aren't met; this fails the build if any line of our defconfig did not end up in `.config`, or if a symbol we turned off was forced on by another.
+2. `make linux-configure` and **`image/check-kernel-config.sh`**: checks the generated kernel `.config` against `image/board/emm/kernel-required.txt` (USB MIDI, initramfs, VFAT, systemd basics, WiFi, Bluetooth), before the long build starts.
+3. The full `make`. Hooks in `image/board/emm/`: `post-build.sh` installs `emmd`, the units from `packaging/` and enables services; `post-image.sh` collects one board's SD-card files into `emm-payload-<board>/`.
+
+Then `scripts/package-sdcard.sh` merges both payloads, checks that every file the firmware needs is present, and writes `dist/emm-sdcard-<version>.zip` with a `.sha256`.
+
+The defconfigs in `image/configs/` are **generated** from `image/defconfig.d/` (a shared part plus one per board) by `image/mkconfigs.sh`; `build.sh` refuses to run if they are out of date. They follow Buildroot's own `raspberrypi4_64` / `raspberrypi5` defconfigs: the same Raspberry Pi kernel commit (so Buildroot's `linux.hash` matches), the same 6.6 headers and DT names, with systemd, the cpio rootfs and the EMM packages on top.
+
+## Power loss and the FAT32 partition
+
+The honest trade-off:
+
+* **ext4 root** (what Raspberry Pi OS does): journaled, but a pull of the plug mid-write can still damage the filesystem, and the SD card wears from logging and swap. A damaged root means a box that doesn't boot.
+* **This design**: the running system is in RAM, and the card is only written when you change settings. The weak point is FAT32, which has no journal. Three things limit the exposure:
+  1. `/boot` is mounted `rw,sync,dirsync`: every write and directory change reaches the card before the call returns, so there is no window of delayed writes after the settings are saved.
+  2. EMM writes rarely (on *Save*) and replaces files atomically (write a temporary file, then rename).
+  3. The partition is checked at every boot: `systemd-fsck` runs `fsck.fat` (pass 2 in `fstab`) and repairs a dirty FAT.
+* What remains: cutting the power *during* a save can lose that save, and at worst leave a file needing repair. The firmware files (`kernel*.img`, `rootfs-*.cpio.gz`) are only written when you update the card, from a computer. Because the system comes from RAM, the worst case is "your latest settings are lost", not "the box doesn't boot".
+* `sync` makes writes slow (FAT, small files: fine) and, on a flash card, wear is proportional to writes, which here are a handful per day at most.
+
+Logging is volatile (`journald` `Storage=volatile`, 8 MB), so there is nothing to wear out or fill up, and also nothing to read after a crash.
+
+## Design choices worth knowing
+
+* **Console login:** `root` with an empty password on the HDMI console (tty1) and no network login service (no SSH). Anyone with physical access has the box anyway; it makes the first boot debuggable. Set `BR2_TARGET_GENERIC_ROOT_PASSWD` or disable root login in `defconfig.d/common.defconfig` if that bothers you.
+* **No `dtoverlay=` support:** the card carries no overlays (smaller, nothing to get wrong). Bluetooth is probed by the kernel (`krnbt` defaults to on). To add overlays, enable `BR2_PACKAGE_RPI_FIRMWARE_INSTALL_DTB_OVERLAYS` and copy `overlays/` to the card.
+* **Interface names:** `net.ifnames=0` in `cmdline.txt`, so Ethernet is `eth0` and WiFi `wlan0` (systemd's default would name the Pi's Ethernet `end0`).
+* **Late WiFi driver:** the WiFi driver is a kernel module loaded by udev, so the wlan device can appear several seconds after `emmd` starts. `emmd` waits up to 30 s for it before deciding there is no WiFi adapter, and also notices a device that appears later.
+* **USB autosuspend off** (`usbcore.autosuspend=-1`): a sleeping MIDI interface adds latency to the first message.
+* **Debugging a boot that doesn't work:** `cmdline.txt` has no `quiet`, so systemd's progress shows on HDMI. For a serial console add `enable_uart=1` to `config.txt` and `console=serial0,115200` to `cmdline.txt` (Pi 5: the debug connector is `ttyAMA10`).
+* **USB boot is not supported:** `fstab` mounts `/dev/mmcblk0p1`. SD cards and CM4 eMMC are both `mmcblk0`.
+* **No NAT in setup mode:** `firewall-backend=none` in NetworkManager's config. The access point has no upstream to share.
+
+## UNVERIFIED
+
+Nothing in `image/` has been built or run. What was checked, and what was not:
+
+**Checked against Buildroot 2025.02.19's sources** (read from the release tag): the existence and dependencies of every package and system symbol in `defconfig.d/` (NetworkManager and its CLI, wpa_supplicant with D-Bus/AP/WPA3, dnsmasq, avahi daemon, bluez5_utils, iw, wireless-regdb, util-linux rfkill, brcmfmac_sdio-firmware-rpi, dosfstools, systemd options, cpio rootfs, rpi-firmware variants, the kernel options); the kernel tarball commit and its hash entry in Buildroot's own `linux.hash`; that `fs/cpio/init` mounts devtmpfs and execs `/sbin/init`; that wpa_supplicant's makefile installs its systemd and D-Bus activation files; the Buildroot tarball's SHA-256 (from the signed announcement). Device trees for the Pi 4, 400, CM4, CM4S, Pi 5 and CM5 (on the CM5 IO and CM4 IO boards) exist in that kernel commit; those for the Pi 500/500+ and the CM5 Lite do not (checked in its `arch/arm64/boot/dts/broadcom/`). That `systemd` is built with `-Dseccomp=disabled` unless `BR2_PACKAGE_LIBSECCOMP` is set (`package/systemd/systemd.mk`; `package/systemd/Config.in` does not select it), and that libseccomp supports aarch64 with the 6.6 headers. Raspberry Pi's documented `config.txt` behaviour: `[pi4]`/`[pi5]` filters, `initramfs … followkernel`, default kernel file names, no `start4.elf` on the Pi 5, `krnbt` default on. NetworkManager keys (`firewall-backend`, `rc-manager`, `wifi.powersave`, `[connectivity]`), and that NetworkManager reads `dnsmasq-shared.d`. BlueZ's `GattManager1` and `LEAdvertisingManager1` are not marked experimental in its current documentation.
+
+**Not verified; expect to find problems here:**
+
+1. The whole chain has never run: Docker build, `make`, `post-build.sh`/`post-image.sh` against real Buildroot output (they were exercised only against fake file trees), booting on a Pi 4 and a Pi 5. `check-defconfig.sh` and `check-kernel-config.sh` exist to catch the configuration part early; their pass/fail logic was tested against synthetic files only.
+2. **Kconfig interactions.** A symbol may be dropped for a dependency this review missed. `check-defconfig.sh` reports exactly which; fix `defconfig.d/` and run `image/mkconfigs.sh`.
+3. **systemd as PID 1 from an initramfs root** (Buildroot's `/init` helper, then systemd on a ramfs/tmpfs root). It is a common Buildroot setup, but not tried here. The unit's hardening avoids mount-namespace directives for this reason. Its seccomp-based directives (`LockPersonality=`, `RestrictSUIDSGID=`, `RestrictNamespaces=`, `SystemCallArchitectures=`) only take effect because `defconfig.d/common.defconfig` enables `BR2_PACKAGE_LIBSECCOMP` (systemd skips them without it); they are enforced on the image for the first time at its first boot, and `check-defconfig.sh` will show whether Kconfig kept the symbol.
+4. **NetworkManager's `shared` mode without iptables/nftables.** The image ships neither, and sets `firewall-backend=none`. If AP activation fails, add `BR2_PACKAGE_NFTABLES=y` and drop that setting (the Pi kernel builds the netfilter modules). Also whether the NetworkManager in this Buildroot release knows `firewall-backend` (the key was read from the current documentation).
+5. **WiFi/Bluetooth firmware names on Pi 5 / CM4 / CM5.** `brcmfmac_sdio-firmware-rpi` is LibreELEC's set (covers BCM43455: Pi 3B+, 4, 400, 5); board-specific variants such as `…raspberrypi,4-model-b…` fall back to the generic file names, which depends on the driver. Whether AP mode works on the stock firmware was not checked.
+6. **Bluetooth attach.** The Pi's controller is attached by the kernel (serdev) with `krnbt` on; if `bluetoothd` finds no adapter, `btattach`/`hciattach` (`BR2_PACKAGE_BLUEZ5_UTILS_TOOLS`/`_DEPRECATED`) is the fallback. The BlueZ release in Buildroot 2025.02 was not checked for needing `--experimental`.
+7. **Boot partition as `/dev/mmcblk0p1`**, `tz=UTC,fmask=0077,dmask=0077,sync,dirsync` options, and `systemd-fsck` repairing FAT32 with `fsck.fat -a` at boot; the real write latency of `sync` on a card.
+8. **`usbcore.autosuspend=-1` and the udev rule** (`ATTR{bInterfaceSubClass}=="03"` → `echo on > …/../power/control`).
+9. **Kernel options**: the list in `kernel-required.txt` and the three lines in `linux.fragment` come from reading the Raspberry Pi `bcm2711_defconfig`; `bcm2712_defconfig` was not read. Modules are used for USB audio/MIDI, WiFi and Bluetooth (as in Raspberry Pi OS) and rely on udev autoload plus `modules-load.d/emm.conf` (`snd-usb-audio`).
+10. **CM4/CM5 USB host mode**: the image installs no overlays, so these need extra `config.txt` work. Pi 500/500+ and CM5 Lite are not supported at all (no device tree, see above).
+11. **Resource estimates** (rootfs size, RAM use, build time and disk) are estimates. A 1 GB Pi 4 should be fine; a Pi 4 with less RAM isn't made.
+12. **Dockerfile package list** is from the Buildroot manual's requirements and memory; the first `--check-only` run will show if something is missing.
+13. **Hostname changes**: `emmd` runs `hostnamectl set-hostname` and then `systemctl restart avahi-daemon` (best effort, in `applyHostname` in `internal/netcfg/manager.go`) so that Avahi re-announces the name. Whether both work on the image (systemd-hostnamed over D-Bus, the Avahi restart) has not been tried. A manual `hostnamectl` does not restart Avahi.
+14. The root filesystem has no persistent `machine-id`, so DHCP clients using it may look like a new host after each boot (reserve an address by MAC if you need a fixed one).

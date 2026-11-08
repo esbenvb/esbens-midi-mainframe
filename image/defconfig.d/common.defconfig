@@ -1,0 +1,94 @@
+# ---- shared by Pi 4 and Pi 5 -------------------------------------------------
+# Buildroot 2025.02.x (LTS). Every symbol below was checked against that
+# release's Config.in files; image/check-defconfig.sh re-checks them against the
+# real Kconfig on every build.
+
+# Toolchain: internal, glibc (systemd needs glibc), C++ (as in upstream's Pi configs).
+BR2_aarch64=y
+BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6=y
+BR2_GLOBAL_PATCH_DIR="board/raspberrypi/patches"
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+
+# System
+BR2_INIT_SYSTEMD=y
+BR2_TARGET_GENERIC_HOSTNAME="emm"
+BR2_TARGET_GENERIC_ISSUE="EMM MIDI Mainframe"
+BR2_TARGET_GENERIC_GETTY_PORT="tty1"
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_EMM_PATH)/board/emm/overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_EMM_PATH)/board/emm/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_EMM_PATH)/board/emm/post-image.sh"
+
+# Network management belongs to NetworkManager, name resolution to NM's own writer.
+# BR2_PACKAGE_SYSTEMD_NETWORKD is on by default; both must be off.
+# BR2_PACKAGE_SYSTEMD_NETWORKD is not set
+# BR2_PACKAGE_SYSTEMD_RESOLVED is not set
+# Not needed on a headless box.
+# BR2_PACKAGE_SYSTEMD_VCONSOLE is not set
+BR2_PACKAGE_SYSTEMD_HOSTNAMED=y
+BR2_PACKAGE_SYSTEMD_TIMESYNCD=y
+# Buildroot's systemd.mk builds systemd with -Dseccomp=disabled unless libseccomp is
+# enabled (package/systemd/Config.in does not select it). packaging/systemd/emmd.service
+# uses LockPersonality=, RestrictSUIDSGID=, RestrictNamespaces= and
+# SystemCallArchitectures=, which are seccomp filters: without this line systemd
+# skips them. (The kernel side, CONFIG_SECCOMP, is in kernel-required.txt.)
+BR2_PACKAGE_LIBSECCOMP=y
+
+# Kernel: Raspberry Pi's tree at the commit Buildroot 2025.02.19 pins for its own
+# Pi defconfigs (so board/raspberrypi/patches/linux/linux.hash matches).
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz"
+BR2_LINUX_KERNEL_IMAGE=y
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+# The kernel travels as a separate file next to the initramfs, not inside it.
+# BR2_LINUX_KERNEL_INSTALL_TARGET is not set
+BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y
+BR2_PACKAGE_XZ=y
+BR2_PACKAGE_KMOD=y
+BR2_PACKAGE_KMOD_TOOLS=y
+BR2_PACKAGE_HOST_KMOD_XZ=y
+
+# Root filesystem: a gzip'd cpio archive, loaded by the Pi firmware as an initramfs.
+BR2_TARGET_ROOTFS_CPIO=y
+BR2_TARGET_ROOTFS_CPIO_GZIP=y
+# BR2_TARGET_ROOTFS_TAR is not set
+
+# Networking: NetworkManager with WiFi (wpa_supplicant over D-Bus, AP mode for the
+# setup network) and its own dnsmasq for the access point's DHCP/DNS.
+BR2_PACKAGE_NETWORK_MANAGER=y
+BR2_PACKAGE_NETWORK_MANAGER_CLI=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y
+BR2_PACKAGE_WPA_SUPPLICANT_AP_SUPPORT=y
+BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
+BR2_PACKAGE_WPA_SUPPLICANT_DBUS=y
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+BR2_PACKAGE_DNSMASQ=y
+# BR2_PACKAGE_DNSMASQ_TFTP is not set
+BR2_PACKAGE_IW=y
+BR2_PACKAGE_WIRELESS_REGDB=y
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+BR2_PACKAGE_UTIL_LINUX_RFKILL=y
+
+# mDNS: emm.local and the RTP-MIDI service announcements (service files).
+BR2_PACKAGE_AVAHI=y
+BR2_PACKAGE_AVAHI_DAEMON=y
+# BR2_PACKAGE_AVAHI_AUTOIPD is not set
+
+# Bluetooth: bluetoothd for the BLE-MIDI GATT server (emmd talks to it over D-Bus).
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+BR2_PACKAGE_BLUEZ5_UTILS_MONITOR=y
+# BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_NETWORK is not set
+
+# Firmware blobs for the Pi's WiFi/Bluetooth chip (BCM43455 and relatives).
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI=y
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI_BT=y
+BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI_WIFI=y
+
+# fsck.fat: systemd-fsck repairs the FAT32 boot partition after a power cut.
+BR2_PACKAGE_DOSFSTOOLS=y
+BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y

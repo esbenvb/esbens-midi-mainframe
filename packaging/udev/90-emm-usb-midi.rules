@@ -1,0 +1,5 @@
+# Keep USB MIDI devices out of USB autosuspend. Resuming a sleeping device adds
+# latency to the first message and some synths misbehave when suspended.
+# Matches the USB MIDI Streaming interface (class 01, subclass 03) and switches
+# the parent device's power management to "on".
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", ATTR{bInterfaceClass}=="01", ATTR{bInterfaceSubClass}=="03", RUN+="/bin/sh -c 'echo on > /sys%p/../power/control'"

@@ -1,0 +1,88 @@
+# Esben's MIDI Mainframe: boot-time configuration
+#
+# Copy this file to "emm.txt" (same folder) and remove the "#" in front of the
+# lines you want. One "key = value" per line; keys may be written in any case.
+#
+# Comments and quotes, exactly as EMM reads this file:
+#   * A blank line, or a line whose first non-blank character is "#", is a comment.
+#   * In a value, a "#" that comes after a space or tab also starts a comment:
+#         hostname = studio    # the synth room        (the value is: studio)
+#   * Put a value in "double" or 'single' quotes if it contains " #", or if it
+#     starts or ends with a space. Inside quotes everything is literal (including
+#     "#" and "="), and there are no escape sequences: to have one kind of quote
+#     inside, wrap the value in the other kind. For example:
+#         wifi_password = "correct horse #1"
+#   * A "#" inside a word (pa#ss) or right after the "=" (key=#x) is part of the
+#     value. Only the first "=" on a line splits key from value.
+#   * A line EMM cannot use (unknown key, bad value, no "=") is ignored, and the
+#     reason is written to EMM's log (journalctl -u emmd). If a key appears twice,
+#     the last one wins.
+#
+# Keys that are present in emm.txt win over settings made in the web interface,
+# and are applied again on every boot. Leave a key out to manage it from the web
+# interface instead. Passwords in this file are stored as plain text.
+#
+# To get back to the WiFi setup access point, create an empty file named
+# "reset-network" next to emm.txt and reboot. (EMM deletes it again.)
+
+# Name on the network: http://<hostname>.local/
+# Only applied if you set it here (or in the web UI); otherwise the machine keeps
+# its own name (the SD-card image's is "emm").
+# Letters, digits and "-" (no dots, no "-" at the start or end), at most 63
+# characters; capital letters are made small. Default: emm
+# hostname      = emm
+
+# WiFi regulatory country: two letters, e.g. DK or US. WiFi stays off in many
+# regions until this is set, and 5 GHz channels depend on it.
+# wifi_country  = DK
+
+# WiFi network to join. The name is 1 to 32 bytes. The password is 8 to 63
+# characters, or 64 hex digits; leave it empty (or out) for an open network. (A
+# password of the wrong length is not rejected: EMM logs a warning and tries it,
+# and the join fails.)
+# wifi_ssid     = MyNetwork
+# wifi_password = my-wifi-password
+
+# Wired network (default: auto):
+#   auto    DHCP when a cable is plugged in
+#   dhcp    DHCP, required (IPv6 off)
+#   static  the fixed address below
+#   off     wired network disabled
+# eth_address, eth_gateway and eth_dns are used ONLY with "ethernet = static"; with
+# any other mode, or without an "ethernet" line in this file, they are ignored.
+# eth_address is an IPv4 address with prefix length and is required for static.
+# eth_gateway (optional) is an IPv4 address inside that network. eth_dns (optional)
+# is one or more IPv4 addresses separated by commas or spaces. If the static
+# settings cannot be used, EMM falls back to DHCP.
+# ethernet      = static
+# eth_address   = 192.168.1.50/24
+# eth_gateway   = 192.168.1.1
+# eth_dns       = 192.168.1.1
+
+# The setup access point that EMM opens when it has no network.
+# ap_ssid is 1 to 32 bytes; the default is EMM-Setup-XXXX (XXXX from the WiFi
+# adapter's address). ap_password is 8 to 63 characters, or 64 hex digits; leave it
+# empty for an open network. A password of the wrong length is ignored, and the
+# setup network is then OPEN.
+# ap_ssid       = EMM-Setup
+# ap_password   =
+
+# Network MIDI (RTP-MIDI / AppleMIDI) and Bluetooth LE MIDI: on | off
+# (true/false, yes/no and 1/0 work too). Default: on
+# rtp           = on
+# ble           = on
+# Name shown when pairing Bluetooth (default: EMM).
+# ble_name      = EMM
+
+# Extra names the web interface may be opened with. EMM refuses requests for a
+# name it does not know, as a defence against DNS rebinding. Always accepted: the
+# IP address, emm.local (and any other *.local name), the bare hostname, and
+# <hostname>.lan, .home, .internal, .home.arpa and the like. If your router hands
+# out another name, such as emm.fritz.box, list it here: host names only (no
+# http://, no port, no path), separated by commas. A name that starts with a dot
+# allows that domain and every name below it.
+# allowed_hosts = emm.fritz.box, .mydomain.example
+
+# Password for the web interface. A password here is used instead of one saved from
+# the web interface; empty (or out) means none is set here.
+# web_password  =

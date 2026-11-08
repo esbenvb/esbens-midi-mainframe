@@ -1,0 +1,2 @@
+name: EMM
+desc: Esben's MIDI Mainframe appliance image for Raspberry Pi 4 and 5 (initramfs from the FAT32 boot partition)

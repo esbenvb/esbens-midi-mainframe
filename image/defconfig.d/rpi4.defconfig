@@ -1,0 +1,16 @@
+# ---- Raspberry Pi 4 B / 400 / CM4 / CM4S (BCM2711) ---------------------------
+BR2_cortex_a72=y
+BR2_LINUX_KERNEL_DEFCONFIG="bcm2711"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_EMM_PATH)/board/emm/linux.fragment"
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="broadcom/bcm2711-rpi-4-b broadcom/bcm2711-rpi-400 broadcom/bcm2711-rpi-cm4 broadcom/bcm2711-rpi-cm4s"
+
+# The Pi 4's GPU firmware (start4.elf / fixup4.dat) must be on the card.
+# (The Pi 5 has its firmware in the EEPROM and needs neither.)
+BR2_PACKAGE_RPI_FIRMWARE=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI4=y
+BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE="$(BR2_EXTERNAL_EMM_PATH)/board/emm/config.txt"
+BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE="$(BR2_EXTERNAL_EMM_PATH)/board/emm/cmdline.txt"
+# No dtoverlay= support: no HAT overlays are installed.
+# BR2_PACKAGE_RPI_FIRMWARE_INSTALL_DTB_OVERLAYS is not set
+
+BR2_ROOTFS_POST_SCRIPT_ARGS="rpi4"

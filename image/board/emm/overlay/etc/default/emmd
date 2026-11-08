@@ -1,0 +1,2 @@
+# emmd arguments for the appliance image: settings live on the FAT32 boot partition.
+EMMD_ARGS=--boot-dir=/boot --state=/boot/emm/state.json --allow-power

@@ -1,0 +1,15 @@
+# Kernel configuration added on top of the Raspberry Pi defconfig
+# (bcm2711 / bcm2712). The Pi defconfig already provides everything EMM needs
+# (USB MIDI, xHCI, WiFi, Bluetooth, VFAT, devtmpfs, the systemd basics); these
+# lines only make sure the pieces of the boot path cannot be modules.
+#
+# image/check-kernel-config.sh verifies the result against kernel-required.txt.
+
+# The root filesystem is an initramfs, gzip-compressed (BR2_TARGET_ROOTFS_CPIO_GZIP).
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_RD_GZIP=y
+
+# /boot is FAT32: make the default code page/charset usable without loading modules.
+CONFIG_VFAT_FS=y
+CONFIG_NLS_CODEPAGE_437=y
+CONFIG_NLS_ISO8859_1=y

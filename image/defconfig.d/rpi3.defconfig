@@ -1,0 +1,24 @@
+# ---- Raspberry Pi 3 B / 3B+ / 3A+ and Pi Zero 2 W (BCM2710 / BCM2837) ---------
+# One 64-bit kernel and one initramfs serve all of them; the firmware picks the device
+# tree by board. (Buildroot's own raspberrypi3_64 defconfig is the model: same kernel
+# defconfig and commit.) Not built here: the Compute Module 3/3+ (device tree
+# bcm2710-rpi-cm3) and the Pi 2.
+BR2_cortex_a53=y
+# The commit Buildroot 2025.02.19 pins for its own Pi defconfigs (Linux 6.6.28; its hash is
+# in board/raspberrypi/patches/linux/linux.hash).
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz"
+BR2_LINUX_KERNEL_DEFCONFIG="bcmrpi3"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_EMM_PATH)/board/emm/linux.fragment"
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="broadcom/bcm2710-rpi-3-b broadcom/bcm2710-rpi-3-b-plus broadcom/bcm2837-rpi-3-a-plus broadcom/bcm2710-rpi-zero-2-w"
+
+# The Pi 3 family has no EEPROM bootloader: the GPU loads bootcode.bin, then
+# start.elf and fixup.dat from the card.
+BR2_PACKAGE_RPI_FIRMWARE=y
+BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI=y
+BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE="$(BR2_EXTERNAL_EMM_PATH)/board/emm/config.txt"
+BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE="$(BR2_EXTERNAL_EMM_PATH)/board/emm/cmdline.txt"
+# No dtoverlay= support: no HAT overlays are installed.
+# BR2_PACKAGE_RPI_FIRMWARE_INSTALL_DTB_OVERLAYS is not set
+
+BR2_ROOTFS_POST_SCRIPT_ARGS="rpi3"

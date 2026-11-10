@@ -1,4 +1,4 @@
-# ---- shared by Pi 4 and Pi 5 -------------------------------------------------
+# ---- shared by every board ---------------------------------------------------
 # Buildroot 2025.02.x (LTS). Every symbol below was checked against that
 # release's Config.in files; image/check-defconfig.sh re-checks them against the
 # real Kconfig on every build.
@@ -8,7 +8,8 @@ BR2_aarch64=y
 BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
 BR2_TOOLCHAIN_BUILDROOT_CXX=y
 BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6=y
-BR2_GLOBAL_PATCH_DIR="board/raspberrypi/patches"
+# Buildroot's own Raspberry Pi hashes, plus ours (image/patches/) for kernel commits it does not pin.
+BR2_GLOBAL_PATCH_DIR="board/raspberrypi/patches $(BR2_EXTERNAL_EMM_PATH)/patches"
 BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
 
 # System
@@ -35,11 +36,11 @@ BR2_PACKAGE_SYSTEMD_TIMESYNCD=y
 # skips them. (The kernel side, CONFIG_SECCOMP, is in kernel-required.txt.)
 BR2_PACKAGE_LIBSECCOMP=y
 
-# Kernel: Raspberry Pi's tree at the commit Buildroot 2025.02.19 pins for its own
-# Pi defconfigs (so board/raspberrypi/patches/linux/linux.hash matches).
+# Kernel: Raspberry Pi's tree (the commit is chosen per board, in its own file; every
+# commit needs a hash in Buildroot's or our linux.hash). Defconfig and device trees
+# are per board too.
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
-BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz"
 BR2_LINUX_KERNEL_IMAGE=y
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
 BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y

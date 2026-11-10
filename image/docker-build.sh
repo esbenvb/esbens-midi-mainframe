@@ -44,7 +44,7 @@ for board in "${BOARDS[@]}"; do
   make -C "$BR" O="$O" linux-configure
   kcfg=$(find "$O/build" -maxdepth 2 -name .config -path '*/linux-*' ! -path '*linux-headers*' ! -path '*linux-tools*' | head -n1)
   [ -n "$kcfg" ] || { echo "kernel .config not found under $O/build" >&2; exit 1; }
-  "$EXT/check-kernel-config.sh" "$kcfg" "$EXT/board/emm/kernel-required.txt"
+  "$EXT/check-kernel-config.sh" "$kcfg" "$EXT/board/emm/kernel-required.txt" "$EXT/board/emm/kernel-required.$board.txt"
 
   echo "==> [$board] building (this takes a while)"
   make -C "$BR" O="$O" -j"$(nproc)"

@@ -1,5 +1,6 @@
 # Kernel options the appliance cannot work without. Format: SYMBOL ALLOWED[,ALLOWED]
-# (checked against the generated .config by image/check-kernel-config.sh)
+# (checked against the generated .config by image/check-kernel-config.sh, together with
+# the board's own kernel-required.<board>.txt)
 BLK_DEV_INITRD   y
 RD_GZIP          y
 DEVTMPFS         y
@@ -15,8 +16,7 @@ TIMERFD          y
 EPOLL            y
 FHANDLE          y
 SECCOMP          y
-# USB MIDI
-USB_XHCI_HCD     y,m
+# USB MIDI (the USB host controller is per board: kernel-required.<board>.txt)
 SND              y,m
 SND_RAWMIDI      y,m
 SND_USB_AUDIO    y,m

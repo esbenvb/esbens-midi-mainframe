@@ -1,0 +1,2 @@
+# Pi 4 family (BCM2711): USB 3.0 controller (VL805) behind xHCI.
+USB_XHCI_HCD     y,m

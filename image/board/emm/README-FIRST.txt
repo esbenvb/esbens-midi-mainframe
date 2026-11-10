@@ -4,11 +4,12 @@ Esben's MIDI Mainframe (EMM) @VERSION@
 This folder is the whole system. To install it:
 
   1. Format an SD card as FAT32 (MBR partition table). Cards over 32 GB often come
-     formatted exFAT and the Raspberry Pi 4/5 bootloader cannot read that; see
+     formatted exFAT and the Raspberry Pi bootloader cannot read that; see
      docs/INSTALL.md in the project for how to format any size as FAT32.
   2. Copy the CONTENTS of this folder onto the card (not the folder itself).
-  3. Put the card in a Raspberry Pi 4, 400, CM4, CM4S, 5 or CM5 (not the Pi 500/500+
-     or the CM5 Lite), connect a powered USB hub with your MIDI gear, and power on.
+  3. Put the card in a Raspberry Pi 3 (B, B+, A+), Zero 2 W, 4, 400, CM4, CM4S, 5,
+     500, 500+, CM5 or CM5 Lite, connect a powered USB hub with your MIDI gear, and
+     power on.
 
 First boot
 ----------
@@ -27,9 +28,9 @@ network back, create an empty file called reset-network next to emm.txt and rebo
 
 What is on the card
 -------------------
-  kernel8.img / kernel_2712.img   Linux for Pi 4 / Pi 5
-  rootfs-pi4.cpio.gz / rootfs-pi5.cpio.gz   the system itself (runs from RAM)
-  start4.elf, fixup4.dat, *.dtb   Raspberry Pi firmware pieces and device trees
+  kernel_pi3.img / kernel8.img / kernel_2712.img   Linux for Pi 3 and Zero 2 W / Pi 4 / Pi 5
+  rootfs-pi3.cpio.gz / rootfs-pi4.cpio.gz / rootfs-pi5.cpio.gz   the system itself (runs from RAM)
+  bootcode.bin, start*.elf, fixup*.dat, *.dtb   Raspberry Pi firmware pieces and device trees
   config.txt, cmdline.txt         boot configuration
   emm.txt                         your settings (optional)
   emm/state.json                  settings made in the web interface (created by EMM)

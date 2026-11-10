@@ -1,6 +1,6 @@
 # Installing EMM
 
-Two ways to run Esben's MIDI Mainframe on a Raspberry Pi 4 or 5 (or 400, CM4, CM5):
+Two ways to run Esben's MIDI Mainframe on a Raspberry Pi 3, 4 or 5 (or Zero 2 W, 400, 500, CM4, CM5):
 
 | | A. Raspberry Pi OS + installer | B. Appliance SD card |
 |---|---|---|
@@ -8,7 +8,7 @@ Two ways to run Esben's MIDI Mainframe on a Raspberry Pi 4 or 5 (or 400, CM4, CM
 | What you get | A normal Debian system with EMM as a service; SSH, `apt`, logs | A small read-mostly system that runs from RAM; no Linux partition, nothing to corrupt when you pull the plug |
 | Status | The path to start with | **Not yet built or booted on real hardware**, see [SDCARD-IMAGE.md](SDCARD-IMAGE.md) |
 
-Both give the same EMM: same web interface, same `emm.txt`. The **Pi 500/500+ and the CM5 Lite** are not covered by the appliance card (B): the pinned kernel has no device tree for them, so the card carries none. They should work with A, since the SoC is the Pi 5's, but that has not been tried.
+Both give the same EMM: same web interface, same `emm.txt`.
 
 ## A. Raspberry Pi OS Lite + installer
 
@@ -42,8 +42,8 @@ On an older image that still uses `dhcpcd`, it stops and tells you to reflash; `
 
 ## B. Appliance SD card
 
-1. Get `emm-sdcard-<version>.zip` (build it with `image/build.sh`, see [SDCARD-IMAGE.md](SDCARD-IMAGE.md)). One zip works on Pi 4/400/CM4/CM4S and Pi 5/CM5 (not the Pi 500/500+ or the CM5 Lite).
-2. **Format the card as FAT32 with an MBR partition table.** The Pi 4/5 bootloader reads FAT32 only, and many cards over 32 GB come formatted exFAT. The system is a few tens of MB, so a small partition is plenty and a small card is easiest.
+1. Get `emm-sdcard-<version>.zip` (build it with `image/build.sh`, see [SDCARD-IMAGE.md](SDCARD-IMAGE.md)). One zip works on Pi 3 B/B+/A+, Zero 2 W, Pi 4/400/CM4/CM4S and Pi 5/500/500+/CM5/CM5 Lite.
+2. **Format the card as FAT32 with an MBR partition table.** The Raspberry Pi bootloader reads FAT32 only, and many cards over 32 GB come formatted exFAT. The system is a few tens of MB, so a small partition is plenty and a small card is easiest.
 
    *macOS* (this erases the whole card; check the disk number with `diskutil list` first):
    ```bash

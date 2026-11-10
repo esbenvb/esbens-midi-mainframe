@@ -4,6 +4,6 @@
 # sync,dirsync: every write is on the card when the call returns, so pulling the
 # plug between writes cannot leave the FAT half-updated. EMM writes rarely and
 # replaces files atomically. fsck (pass 2) repairs a dirty FAT at the next boot.
-# /dev/mmcblk0p1 is the SD card (Pi 4/5, CM4 eMMC); USB boot is not supported.
+# /dev/mmcblk0p1 is the SD card (Pi 3/4/5, CM4 eMMC); USB boot is not supported.
 /dev/mmcblk0p1  /boot  vfat   rw,sync,noatime,dirsync,tz=UTC,fmask=0077,dmask=0077,nofail,x-systemd.device-timeout=15s  0  2
 tmpfs           /tmp   tmpfs  mode=1777,nosuid,nodev  0  0

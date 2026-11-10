@@ -20,7 +20,7 @@ case "${1:-}" in
 esac
 mkdir -p "$here/configs"
 rc=0
-for board in rpi4 rpi5; do
+for board in rpi3 rpi4 rpi5; do
   out="$here/configs/emm_${board}_defconfig"
   tmp=$(mktemp)
   {

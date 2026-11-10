@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Merge the per-board payload directories produced by the Buildroot post-image
-# step into one SD-card tree and zip it. The result works on Raspberry Pi 4, 400,
-# CM4, CM4S, Pi 5 and CM5 (the boards whose device trees the build installs; not
-# the Pi 500/500+ or CM5 Lite): both kernels, both initramfs files, one config.txt
-# whose [pi4]/[pi5] sections pick the right pair.
+# step into one SD-card tree and zip it. The result works on Raspberry Pi 3 (B, B+, A+),
+# Zero 2 W, 4, 400, CM4, CM4S, 5, 500, 500+, CM5 and CM5 Lite (the boards whose device
+# trees the builds install): the three kernels, the three initramfs files, one
+# config.txt whose [pi3]/[pi02]/[pi4]/[pi5] sections pick the right pair.
 #
 #   scripts/package-sdcard.sh [--version V] [--out DIR] [--dry-run] PAYLOAD_DIR [PAYLOAD_DIR...]
 #
@@ -48,8 +48,9 @@ TREE="$OUT/$NAME"
 
 # Every file the Pi firmware or the kernel needs for the boards we claim to support.
 REQUIRED_COMMON=(config.txt cmdline.txt emm.txt.example README-FIRST.txt)
+REQUIRED_PI3=(kernel_pi3.img bootcode.bin start.elf fixup.dat rootfs-pi3.cpio.gz bcm2710-rpi-3-b.dtb bcm2710-rpi-zero-2-w.dtb)
 REQUIRED_PI4=(kernel8.img start4.elf fixup4.dat rootfs-pi4.cpio.gz bcm2711-rpi-4-b.dtb)
-REQUIRED_PI5=(kernel_2712.img rootfs-pi5.cpio.gz bcm2712-rpi-5-b.dtb)
+REQUIRED_PI5=(kernel_2712.img rootfs-pi5.cpio.gz bcm2712-rpi-5-b.dtb bcm2712-rpi-500.dtb)
 
 for d in "${PAYLOADS[@]}"; do
   [ -d "$d" ] || die "not a directory: $d"
@@ -73,18 +74,21 @@ if [ "$DRY_RUN" != 1 ]; then
 
   # Which boards did we get? Require the full set for each board that is present.
   missing=()
-  have_pi4=0; have_pi5=0
+  have_pi3=0; have_pi4=0; have_pi5=0
+  [ -e "$TREE/kernel_pi3.img" ] && have_pi3=1
   [ -e "$TREE/kernel8.img" ] && have_pi4=1
   [ -e "$TREE/kernel_2712.img" ] && have_pi5=1
-  [ "$have_pi4$have_pi5" != 00 ] || die "neither kernel8.img (Pi 4) nor kernel_2712.img (Pi 5) found in the payloads"
+  [ "$have_pi3$have_pi4$have_pi5" != 000 ] || die "none of kernel_pi3.img (Pi 3), kernel8.img (Pi 4) or kernel_2712.img (Pi 5) found in the payloads"
   for f in "${REQUIRED_COMMON[@]}"; do [ -e "$TREE/$f" ] || missing+=("$f"); done
+  if [ "$have_pi3" = 1 ]; then for f in "${REQUIRED_PI3[@]}"; do [ -e "$TREE/$f" ] || missing+=("$f"); done; fi
   if [ "$have_pi4" = 1 ]; then for f in "${REQUIRED_PI4[@]}"; do [ -e "$TREE/$f" ] || missing+=("$f"); done; fi
   if [ "$have_pi5" = 1 ]; then for f in "${REQUIRED_PI5[@]}"; do [ -e "$TREE/$f" ] || missing+=("$f"); done; fi
   if [ "${#missing[@]}" -gt 0 ]; then
     die "the assembled tree is missing: ${missing[*]}"
   fi
-  [ "$have_pi4" = 1 ] || warn "no Pi 4 payload: this card image will only boot a Pi 5"
-  [ "$have_pi5" = 1 ] || warn "no Pi 5 payload: this card image will only boot a Pi 4"
+  [ "$have_pi3" = 1 ] || warn "no Pi 3 payload: this card image will not boot a Pi 3 or Zero 2 W"
+  [ "$have_pi4" = 1 ] || warn "no Pi 4 payload: this card image will not boot a Pi 4, 400 or CM4"
+  [ "$have_pi5" = 1 ] || warn "no Pi 5 payload: this card image will not boot a Pi 5, 500 or CM5"
 
   # Nothing the FAT32 card should not carry.
   find "$TREE" \( -name '.DS_Store' -o -name '._*' \) -delete

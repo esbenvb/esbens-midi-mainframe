@@ -1,0 +1,4 @@
+# Pi 3 family (BCM2710/2837): USB is the DesignWare OTG controller (the Raspberry Pi
+# dwc_otg driver, also the Zero 2 W's one port); the SD card is the SDHost controller.
+USB_DWCOTG          y,m
+MMC_BCM2835_SDHOST  y,m

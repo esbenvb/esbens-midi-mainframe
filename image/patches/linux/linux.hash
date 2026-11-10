@@ -1,0 +1,5 @@
+# Kernel tarballs this tree builds that Buildroot's own board/raspberrypi/patches/linux/linux.hash
+# does not list. Calculated locally from the URL Buildroot downloads (the same method reproduces
+# the hash Buildroot publishes for its commit 576cc10e...).
+# raspberrypi/linux stable_20250127 (Linux 6.6.74), used by the rpi5 board.
+sha256  6039be8907a9ebf67cf466a6644543cd5aa84f8847102b144d8308b63ceb3787  linux-a18d9ced4965462cb7b3b4252ada440395105308.tar.gz

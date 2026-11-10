@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Build the EMM appliance image inside Docker and package the SD-card zip.
 #
-#   image/build.sh --check-only      config-only validation of both boards. Downloads Buildroot
+#   image/build.sh --check-only      config-only validation of all boards. Downloads Buildroot
 #                                    (~6 MB), runs "make emm_*_defconfig" and checks that every
 #                                    setting was accepted. Minutes, under 1 GB. Needs only Docker.
 #                                    DO THIS FIRST.
-#   image/build.sh                   the real build: BOTH boards, 1-2 hours each, 15-30 GB of disk
+#   image/build.sh                   the real build: ALL boards, 1-2 hours each, 15-30 GB of disk
 #                                    in Docker's disk image, and ~8 GB RAM for Docker. It first
 #                                    cross-compiles emmd on THIS machine, so it needs Go too.
 #   image/build.sh --boards rpi5     only one board (a quoted list for several: --boards "rpi4 rpi5").
+#                                    rpi3 = Pi 3 B/B+/A+ and Zero 2 W; rpi4 = Pi 4, 400, CM4, CM4S;
+#                                    rpi5 = Pi 5, 500/500+, CM5 and CM5 Lite.
 #   image/build.sh --skip-emmd-build   use the existing dist/emmd-linux-arm64 instead of building
 #                                    it (no Go needed; the file must exist).
 #   image/build.sh --version V       version stamp (default: git describe).
@@ -31,7 +33,7 @@ VOL_OUT=emm-buildroot-out
 VOL_DL=emm-buildroot-dl
 
 MODE=build
-BOARDS=(rpi4 rpi5)
+BOARDS=(rpi3 rpi4 rpi5)
 VERSION=""
 SKIP_EMMD=0
 
@@ -54,7 +56,7 @@ done
 have docker || die "Docker is required (https://docs.docker.com/get-docker/)"
 docker info >/dev/null 2>&1 || die "the Docker daemon is not running"
 for b in "${BOARDS[@]}"; do
-  case "$b" in rpi4|rpi5) ;; *) die "unknown board '$b' (rpi4, rpi5)" ;; esac
+  case "$b" in rpi3|rpi4|rpi5) ;; *) die "unknown board '$b' (rpi3, rpi4, rpi5)" ;; esac
 done
 [ -n "$VERSION" ] || VERSION=$(emm_version "$ROOT")
 

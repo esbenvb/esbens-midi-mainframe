@@ -3,11 +3,22 @@
 # unless you know why you are changing it.
 #
 # The filters pick the right files for the board that is booting:
-#   [pi4] = Pi 4B, 400, CM4, CM4S      [pi5] = Pi 5, CM5
-# Not supported by this card: Pi 500/500+ and CM5 Lite. Their device trees are not
-# in the kernel this image is built from, so the card carries none for them.
+#   [pi3]  = Pi 3B, 3B+, 3A+        [pi02] = Pi Zero 2 W
+#   [pi4]  = Pi 4B, 400, CM4, CM4S  [pi5]  = Pi 5, 500, 500+, CM5, CM5 Lite
+# (Raspberry Pi's documented model filters.) The Pi 3 family and the Zero 2 W share
+# one kernel and one initramfs.
 
 disable_splash=1
+
+[pi3]
+arm_64bit=1
+kernel=kernel_pi3.img
+initramfs rootfs-pi3.cpio.gz followkernel
+
+[pi02]
+arm_64bit=1
+kernel=kernel_pi3.img
+initramfs rootfs-pi3.cpio.gz followkernel
 
 [pi4]
 arm_64bit=1
@@ -24,4 +35,4 @@ initramfs rootfs-pi5.cpio.gz followkernel
 # - No dtoverlay= lines: the card carries no overlays. Bluetooth is probed by the
 #   kernel (krnbt defaults to on), so do NOT add dtoverlay=disable-bt.
 # - No gpu_mem= line: setting gpu_mem=16 would ask for the cut-down firmware
-#   (start4cd.elf), which is not on the card.
+#   (start_cd.elf / start4cd.elf), which is not on the card.

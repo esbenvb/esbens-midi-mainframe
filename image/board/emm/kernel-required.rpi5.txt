@@ -1,0 +1,2 @@
+# Pi 5 family (BCM2712): USB ports are on the RP1 chip, behind xHCI.
+USB_XHCI_HCD     y,m

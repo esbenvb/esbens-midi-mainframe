@@ -1,2 +1,2 @@
 name: EMM
-desc: Esben's MIDI Mainframe appliance image for Raspberry Pi 4 and 5 (initramfs from the FAT32 boot partition)
+desc: Esben's MIDI Mainframe appliance image for Raspberry Pi 3, 4 and 5 (Zero 2 W, 500 and the Compute Modules included) (initramfs from the FAT32 boot partition)

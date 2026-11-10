@@ -7,11 +7,11 @@ The goal: copy a few files onto a FAT32 SD card, put it in a Pi, and EMM runs. N
 ## How it works
 
 ```
-Pi 4/5 EEPROM bootloader
-  └─ reads the FAT32 partition: config.txt  ([pi4] / [pi5] sections)
-       ├─ loads  kernel8.img | kernel_2712.img     (Linux, built by Buildroot)
-       ├─ loads  bcm2711-rpi-*.dtb | bcm2712-*.dtb  (chosen by the firmware per board)
-       └─ loads  rootfs-pi4.cpio.gz | rootfs-pi5.cpio.gz  into RAM, right behind the kernel
+Pi bootloader (EEPROM on the Pi 4/5; bootcode.bin, start.elf and fixup.dat from the card on the Pi 3 family)
+  └─ reads the FAT32 partition: config.txt  ([pi3] / [pi02] / [pi4] / [pi5] sections)
+       ├─ loads  kernel_pi3.img | kernel8.img | kernel_2712.img   (Linux, built by Buildroot)
+       ├─ loads  bcm2710-*.dtb | bcm2711-*.dtb | bcm2712-*.dtb    (chosen by the firmware per board)
+       └─ loads  rootfs-pi3.cpio.gz | rootfs-pi4.cpio.gz | rootfs-pi5.cpio.gz  into RAM, right behind the kernel
             (config.txt: "initramfs <file> followkernel")
 
 Linux unpacks the initramfs as its root filesystem (no root= on the command line)
@@ -21,7 +21,15 @@ Linux unpacks the initramfs as its root filesystem (no root= on the command line
        └─ emmd  (reads /boot/emm.txt, keeps settings in /boot/emm/state.json)
 ```
 
-The whole system is therefore **one file per board** that the Pi firmware loads, and `/etc`, `/var`, `/tmp` live in RAM. On the card there is nothing but FAT32. One zip serves both boards because the kernels and initramfs are named per board and `config.txt` filters on `[pi4]`/`[pi5]`. (`[pi4]` also matches Pi 400/CM4/CM4S and `[pi5]` also CM5; the build installs the device trees of exactly these boards: `bcm2711-rpi-4-b`, `-400`, `-cm4`, `-cm4s`, and `bcm2712-rpi-5-b`, `bcm2712d0-rpi-5-b`, `bcm2712-rpi-cm5-cm5io`, `bcm2712-rpi-cm5-cm4io`. The **Pi 500/500+ and the CM5 Lite are not supported**: the pinned kernel commit (Linux 6.6.28) has no device tree for them, so the card carries none. Supporting them would mean moving the kernel pin to a newer `rpi-6.6.y` commit that has `bcm2712-rpi-500` and `bcm2712-rpi-cm5l-*` (hash checking is on, so that commit also needs a `linux.hash` of its own), and adding the names to `BR2_LINUX_KERNEL_INTREE_DTS_NAME`.)
+The whole system is therefore **one file per board** that the Pi firmware loads, and `/etc`, `/var`, `/tmp` live in RAM. On the card there is nothing but FAT32. One zip serves all boards because the kernels and initramfs are named per board and `config.txt` filters on `[pi3]`/`[pi02]`/`[pi4]`/`[pi5]`. Raspberry Pi's [model filters](https://www.raspberrypi.com/documentation/computers/config_txt.html#model-filters) make `[pi3]` match the Pi 3 B/B+/A+ (and CM3), `[pi02]` the Zero 2 W, `[pi4]` the Pi 400/CM4/CM4S too, and `[pi5]` the Pi 500/500+, CM5 and CM5 Lite too. The build installs the device trees of these boards:
+
+| Board (build) | Device trees | Kernel |
+|---|---|---|
+| `rpi3`: Pi 3 B, 3B+, 3A+, Zero 2 W | `bcm2710-rpi-3-b`, `-3-b-plus`, `bcm2837-rpi-3-a-plus`, `bcm2710-rpi-zero-2-w` | Linux 6.6.28, `bcmrpi3` defconfig, 64-bit |
+| `rpi4`: Pi 4 B, 400, CM4, CM4S | `bcm2711-rpi-4-b`, `-400`, `-cm4`, `-cm4s` | Linux 6.6.28, `bcm2711` defconfig |
+| `rpi5`: Pi 5, 500/500+, CM5, CM5 Lite | `bcm2712-rpi-5-b`, `bcm2712d0-rpi-5-b`, `-500`, `-cm5-cm5io`, `-cm5-cm4io`, `-cm5l-cm5io`, `-cm5l-cm4io` | Linux 6.6.74, `bcm2712` defconfig |
+
+The Pi 5 build uses a newer kernel commit than the other two (`stable_20250127` of `rpi-6.6.y`), because the commit Buildroot pins (6.6.28) has no device tree for the Pi 500/500+ or the CM5 Lite. Hash checking is on, so that commit has its own `linux.hash` in `image/patches/linux/` (Buildroot's own hash file does not list it). The Compute Module 3/3+ and the Pi 2 are not covered.
 
 ### Why a separate initramfs file, and not "linked into the kernel"
 
@@ -29,11 +37,11 @@ Buildroot can build the cpio archive into the kernel image (`BR2_TARGET_ROOTFS_I
 
 ### Why one rootfs per board
 
-The Pi 4 and Pi 5 kernels differ (`bcm2711` vs `bcm2712` configuration, different `uname -r`), and the root filesystem carries the kernel modules (`/lib/modules/<release>`) for its own kernel. So Buildroot is run once per board, and each payload gets its own initramfs. The extra cost is a second full build; the two builds share the download cache.
+The Pi 3, Pi 4 and Pi 5 kernels differ (`bcmrpi3`, `bcm2711` and `bcm2712` configurations, different `uname -r`), and the root filesystem carries the kernel modules (`/lib/modules/<release>`) for its own kernel. So Buildroot is run once per board, and each payload gets its own initramfs. The extra cost is a full build per board; the builds share the download cache. The Pi 3 kernel is deliberately not `kernel8.img`, the Pi 4's name on the same card: `config.txt` names each board's file with `kernel=`.
 
-### Why no start4.elf for the Pi 5
+### Which GPU firmware files, and why none for the Pi 5
 
-The Pi 4 loads its GPU firmware (`start4.elf`, `fixup4.dat`) from the card. The Pi 5 has its firmware in the EEPROM and only needs `config.txt` to mark the partition bootable (Raspberry Pi's `config.txt` documentation).
+The Pi 4 loads its GPU firmware (`start4.elf`, `fixup4.dat`) from the card. The Pi 3 family has no EEPROM bootloader at all, so its card also needs `bootcode.bin`, `start.elf` and `fixup.dat`. The Pi 5 has its firmware in the EEPROM and only needs `config.txt` to mark the partition bootable (Raspberry Pi's `config.txt` documentation).
 
 ## Building
 
@@ -41,20 +49,20 @@ Requirements: Docker, and Go on the host (a full `build.sh` cross-compiles `emmd
 
 ```bash
 image/build.sh --check-only        # first: validate the configuration, minutes, < 1 GB
-image/build.sh                     # then: both boards → dist/emm-sdcard-<version>.zip
-image/build.sh --boards rpi5       # one board
+image/build.sh                     # then: all boards (rpi3 rpi4 rpi5) → dist/emm-sdcard-<version>.zip
+image/build.sh --boards rpi5       # one board (a quoted list for several: --boards "rpi3 rpi4")
 image/build.sh --skip-emmd-build   # use the existing dist/emmd-linux-arm64 (no Go needed)
 ```
 
 What `build.sh` does: cross-compiles `emmd` (`dist/emmd-linux-arm64`), builds the container from `image/Dockerfile`, downloads and checksum-verifies Buildroot 2025.02.19 (the LTS; its SHA-256 is pinned in `build.sh`), and for each board runs inside the container:
 
 1. `make emm_<board>_defconfig` and **`image/check-defconfig.sh`**: Kconfig silently drops symbols whose dependencies aren't met; this fails the build if any line of our defconfig did not end up in `.config`, or if a symbol we turned off was forced on by another.
-2. `make linux-configure` and **`image/check-kernel-config.sh`**: checks the generated kernel `.config` against `image/board/emm/kernel-required.txt` (USB MIDI, initramfs, VFAT, systemd basics, WiFi, Bluetooth), before the long build starts.
+2. `make linux-configure` and **`image/check-kernel-config.sh`**: checks the generated kernel `.config` against `image/board/emm/kernel-required.txt` (USB MIDI, initramfs, VFAT, systemd basics, WiFi, Bluetooth) and the board's own `kernel-required.<board>.txt` (its USB host controller, and for the Pi 3 family the SD controller), before the long build starts.
 3. The full `make`. Hooks in `image/board/emm/`: `post-build.sh` installs `emmd`, the units from `packaging/` and enables services; `post-image.sh` collects one board's SD-card files into `emm-payload-<board>/`.
 
-Then `scripts/package-sdcard.sh` merges both payloads, checks that every file the firmware needs is present, and writes `dist/emm-sdcard-<version>.zip` with a `.sha256`.
+Then `scripts/package-sdcard.sh` merges the payloads, checks that every file the firmware needs is present, and writes `dist/emm-sdcard-<version>.zip` with a `.sha256`.
 
-The defconfigs in `image/configs/` are **generated** from `image/defconfig.d/` (a shared part plus one per board) by `image/mkconfigs.sh`; `build.sh` refuses to run if they are out of date. They follow Buildroot's own `raspberrypi4_64` / `raspberrypi5` defconfigs: the same Raspberry Pi kernel commit (so Buildroot's `linux.hash` matches), the same 6.6 headers and DT names, with systemd, the cpio rootfs and the EMM packages on top.
+The defconfigs in `image/configs/` are **generated** from `image/defconfig.d/` (a shared part plus one per board) by `image/mkconfigs.sh`; `build.sh` refuses to run if they are out of date. They follow Buildroot's own `raspberrypi3_64` / `raspberrypi4_64` / `raspberrypi5` defconfigs: the same Raspberry Pi kernel commit (so Buildroot's `linux.hash` matches; the exception is the Pi 5, see above), the same 6.6 headers and DT names, with systemd, the cpio rootfs and the EMM packages on top.
 
 ## Power loss and the FAT32 partition
 
@@ -85,7 +93,7 @@ Logging is volatile (`journald` `Storage=volatile`, 8 MB), so there is nothing t
 
 Nothing in `image/` has been built or run. What was checked, and what was not:
 
-**Checked against Buildroot 2025.02.19's sources** (read from the release tag): the existence and dependencies of every package and system symbol in `defconfig.d/` (NetworkManager and its CLI, wpa_supplicant with D-Bus/AP/WPA3, dnsmasq, avahi daemon, bluez5_utils, iw, wireless-regdb, util-linux rfkill, brcmfmac_sdio-firmware-rpi, dosfstools, systemd options, cpio rootfs, rpi-firmware variants, the kernel options); the kernel tarball commit and its hash entry in Buildroot's own `linux.hash`; that `fs/cpio/init` mounts devtmpfs and execs `/sbin/init`; that wpa_supplicant's makefile installs its systemd and D-Bus activation files; the Buildroot tarball's SHA-256 (from the signed announcement). Device trees for the Pi 4, 400, CM4, CM4S, Pi 5 and CM5 (on the CM5 IO and CM4 IO boards) exist in that kernel commit; those for the Pi 500/500+ and the CM5 Lite do not (checked in its `arch/arm64/boot/dts/broadcom/`). That `systemd` is built with `-Dseccomp=disabled` unless `BR2_PACKAGE_LIBSECCOMP` is set (`package/systemd/systemd.mk`; `package/systemd/Config.in` does not select it), and that libseccomp supports aarch64 with the 6.6 headers. Raspberry Pi's documented `config.txt` behaviour: `[pi4]`/`[pi5]` filters, `initramfs … followkernel`, default kernel file names, no `start4.elf` on the Pi 5, `krnbt` default on. NetworkManager keys (`firewall-backend`, `rc-manager`, `wifi.powersave`, `[connectivity]`), and that NetworkManager reads `dnsmasq-shared.d`. BlueZ's `GattManager1` and `LEAdvertisingManager1` are not marked experimental in its current documentation.
+**Checked against Buildroot 2025.02.19's sources** (read from the release tag): the existence and dependencies of every package and system symbol in `defconfig.d/` (NetworkManager and its CLI, wpa_supplicant with D-Bus/AP/WPA3, dnsmasq, avahi daemon, bluez5_utils, iw, wireless-regdb, util-linux rfkill, brcmfmac_sdio-firmware-rpi, dosfstools, systemd options, cpio rootfs, rpi-firmware variants, the kernel options); the kernel tarball commit and its hash entry in Buildroot's own `linux.hash`; that `fs/cpio/init` mounts devtmpfs and execs `/sbin/init`; that wpa_supplicant's makefile installs its systemd and D-Bus activation files; the Buildroot tarball's SHA-256 (from the signed announcement). Device trees for every board in the table above exist in the kernel commit its build uses (checked in that commit's `arch/arm64/boot/dts/broadcom/`; the Pi 500/500+ and CM5 Lite ones only from `stable_20250127` on). For the Pi 3 family and the Pi 5/500/CM5 boards (the Pi 4 build is unchanged), `make emm_<board>_defconfig` and `check-defconfig.sh` were run against the real Buildroot 2025.02.19 Kconfig on a Mac (all settings accepted), and Buildroot's own hash lookup was checked to find the new `linux.hash` entry for the Pi 5 kernel; the SHA-256 in it was calculated by the same download method that reproduces Buildroot's published hash for its pinned commit. The `[pi3]`, `[pi02]` and `[pi5]` filters are as documented by Raspberry Pi. The WiFi/Bluetooth firmware package ships board-specific files for the Pi 3 B, 3B+, 3A+ and Zero 2 W. That `systemd` is built with `-Dseccomp=disabled` unless `BR2_PACKAGE_LIBSECCOMP` is set (`package/systemd/systemd.mk`; `package/systemd/Config.in` does not select it), and that libseccomp supports aarch64 with the 6.6 headers. Raspberry Pi's documented `config.txt` behaviour: `[pi4]`/`[pi5]` filters, `initramfs … followkernel`, default kernel file names, no `start4.elf` on the Pi 5, `krnbt` default on. NetworkManager keys (`firewall-backend`, `rc-manager`, `wifi.powersave`, `[connectivity]`), and that NetworkManager reads `dnsmasq-shared.d`. BlueZ's `GattManager1` and `LEAdvertisingManager1` are not marked experimental in its current documentation.
 
 **Not verified; expect to find problems here:**
 
@@ -97,9 +105,10 @@ Nothing in `image/` has been built or run. What was checked, and what was not:
 6. **Bluetooth attach.** The Pi's controller is attached by the kernel (serdev) with `krnbt` on; if `bluetoothd` finds no adapter, `btattach`/`hciattach` (`BR2_PACKAGE_BLUEZ5_UTILS_TOOLS`/`_DEPRECATED`) is the fallback. The BlueZ release in Buildroot 2025.02 was not checked for needing `--experimental`.
 7. **Boot partition as `/dev/mmcblk0p1`**, `tz=UTC,fmask=0077,dmask=0077,sync,dirsync` options, and `systemd-fsck` repairing FAT32 with `fsck.fat -a` at boot; the real write latency of `sync` on a card.
 8. **`usbcore.autosuspend=-1` and the udev rule** (`ATTR{bInterfaceSubClass}=="03"` → `echo on > …/../power/control`).
-9. **Kernel options**: the list in `kernel-required.txt` and the three lines in `linux.fragment` come from reading the Raspberry Pi `bcm2711_defconfig`; `bcm2712_defconfig` was not read. Modules are used for USB audio/MIDI, WiFi and Bluetooth (as in Raspberry Pi OS) and rely on udev autoload plus `modules-load.d/emm.conf` (`snd-usb-audio`).
-10. **CM4/CM5 USB host mode**: the image installs no overlays, so these need extra `config.txt` work. Pi 500/500+ and CM5 Lite are not supported at all (no device tree, see above).
-11. **Resource estimates** (rootfs size, RAM use, build time and disk) are estimates. A 1 GB Pi 4 should be fine; a Pi 4 with less RAM isn't made.
+9. **Kernel options**: the list in `kernel-required.txt` and the three lines in `linux.fragment` come from reading the Raspberry Pi `bcm2711_defconfig` (and, for the Pi 3 family's `kernel-required.rpi3.txt`, `bcmrpi3_defconfig`); `bcm2712_defconfig` was not read. Modules are used for USB audio/MIDI, WiFi and Bluetooth (as in Raspberry Pi OS) and rely on udev autoload plus `modules-load.d/emm.conf` (`snd-usb-audio`).
+10. **CM4/CM5 USB host mode**: the image installs no overlays, so these need extra `config.txt` work.
+11. **Resource estimates** (rootfs size, RAM use, build time and disk) are estimates. A 1 GB Pi 4 should be fine; a Pi 4 with less RAM isn't made. The initramfs of the Pi 4 build unpacks to about 107 MB, all of it in RAM: fine on a Pi 3 (1 GB), but on the Zero 2 W (512 MB) it takes a fifth of the memory (the Pi 3 and Pi 5 builds were not measured).
 12. **Dockerfile package list** is from the Buildroot manual's requirements and memory; the first `--check-only` run will show if something is missing.
 13. **Hostname changes**: `emmd` runs `hostnamectl set-hostname` and then `systemctl restart avahi-daemon` (best effort, in `applyHostname` in `internal/netcfg/manager.go`) so that Avahi re-announces the name. Whether both work on the image (systemd-hostnamed over D-Bus, the Avahi restart) has not been tried. A manual `hostnamectl` does not restart Avahi.
 14. The root filesystem has no persistent `machine-id`, so DHCP clients using it may look like a new host after each boot (reserve an address by MAC if you need a fixed one).
+15. **Pi 3 family and Pi 5/500/CM5 Lite, none of it booted.** Pi 3: the 64-bit `bcmrpi3` kernel (Buildroot's own choice for the Pi 3, but with `kernel=kernel_pi3.img` and `arm_64bit=1` in `config.txt`), the USB host being the `dwc_otg` driver, the Zero 2 W's single OTG port acting as a host, whether the firmware finds a device tree for the 3A+ (`bcm2837-rpi-3-a-plus.dtb` is installed; the 3B/3B+/Zero 2 W ones are the names Raspberry Pi OS uses), and WiFi/Bluetooth on its chips (BCM43430 on the 3B, BCM43455 on the 3B+/3A+, BCM43436 on the Zero 2 W; also the 2.4 GHz-only setup network on the 3B and Zero 2 W). Pi 5 build: Linux 6.6.74 instead of 6.6.28, and the Pi 500 and CM5 Lite device trees, none of which has run.

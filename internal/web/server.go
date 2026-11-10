@@ -213,6 +213,8 @@ func (s *Server) routes() {
 	m.HandleFunc("PUT /api/connections", s.handlePutConnection)
 	m.HandleFunc("DELETE /api/connections", s.handleDeleteConnection)
 	m.HandleFunc("PATCH /api/ports/{id}", s.handlePatchPort)
+	m.HandleFunc("DELETE /api/ports/{id}", s.handleDeletePort)
+	m.HandleFunc("POST /api/ports/forget-offline", s.handleForgetOffline)
 	m.HandleFunc("POST /api/ports/{id}/panic", s.handlePanic)
 	m.HandleFunc("POST /api/ports/{id}/test-note", s.handleTestNote)
 

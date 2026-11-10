@@ -277,6 +277,106 @@ func (s *Server) handlePatchPort(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// forgettable reports whether id names a device port that may be forgotten:
+// not a network or Bluetooth port (those have their own switches), and not one
+// that is attached right now.
+func (s *Server) forgettable(id string) bool {
+	if strings.HasPrefix(id, "rtp:") || strings.HasPrefix(id, "ble:") {
+		return false
+	}
+	return !s.d.Router.HasPort(id)
+}
+
+// forget removes everything the unit remembers about the unplugged device port
+// id: its connections (and those of its network endpoint), its name and
+// settings, and its entry in the list of devices seen.
+func (s *Server) forget(ids []string) {
+	gone := map[string]bool{}
+	for _, id := range ids {
+		gone[id], gone["rtp:"+id] = true, true
+	}
+	for _, c := range s.d.Router.Connections() {
+		if gone[c.From] || gone[c.To] {
+			_ = s.d.Router.Disconnect(c.From, c.To)
+		}
+	}
+	s.d.Store.Update(func(st *config.State) {
+		for _, id := range ids {
+			delete(st.Ports, id)
+			delete(st.Known, id)
+			delete(st.Known, "rtp:"+id)
+		}
+		// Presets keep their connections: they are left alone, and recalling one
+		// skips what is no longer known.
+	})
+}
+
+// DELETE /api/ports/{id}: forget an unplugged device.
+func (s *Server) handleDeletePort(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !validID(id) || !s.portKnown(id) {
+		writeErr(w, http.StatusNotFound, "unknown port")
+		return
+	}
+	if s.d.Router.HasPort(id) {
+		writeErr(w, http.StatusConflict, "this device is plugged in; unplug it first")
+		return
+	}
+	if !s.forgettable(id) {
+		writeErr(w, http.StatusBadRequest, "network and Bluetooth ports are removed with their own switch")
+		return
+	}
+	s.forget([]string{id})
+	if s.d.Reconcile != nil {
+		s.d.Reconcile()
+	}
+	s.NotifyTopology()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// POST /api/ports/forget-offline: forget every device that is not plugged in.
+func (s *Server) handleForgetOffline(w http.ResponseWriter, r *http.Request) {
+	st := s.d.Store.Snapshot()
+	isDevice := func(id string) bool {
+		if strings.HasPrefix(id, "usb:") || strings.HasPrefix(id, "sim:") || strings.HasPrefix(id, "alsa:") {
+			return true
+		}
+		k := st.Known[id].Kind
+		return k.IsDevice() || k == router.KindVirtual
+	}
+	seen := map[string]bool{}
+	var devices []string
+	add := func(raw string) {
+		// A device's network endpoint ("rtp:<device>") stands for the device; the
+		// user's own network ports ("rtp:net-…") are not devices.
+		id := raw
+		if dev, ok := strings.CutPrefix(raw, "rtp:"); ok {
+			id = dev
+		}
+		if id == "" || seen[id] || !isDevice(id) || !s.forgettable(id) {
+			return
+		}
+		seen[id] = true
+		devices = append(devices, id)
+	}
+	for id := range st.Known {
+		add(id)
+	}
+	for id := range st.Ports {
+		add(id)
+	}
+	for _, c := range s.d.Router.Connections() {
+		add(c.From)
+		add(c.To)
+	}
+	s.forget(devices)
+	if s.d.Reconcile != nil {
+		s.d.Reconcile()
+	}
+	s.NotifyTopology()
+	writeJSON(w, http.StatusOK, map[string]int{"removed": len(devices)})
+}
+
 func (s *Server) handlePanic(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.d.Router.Panic(id); err != nil {

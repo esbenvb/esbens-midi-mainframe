@@ -127,6 +127,46 @@ export function mount(root) {
     return b;
   }
 
+  // An unplugged device is remembered (its connections wait for it). Forgetting it
+  // deletes those connections, its name and its settings.
+  function forgetButton(p) {
+    return h('button', {
+      type: 'button', class: 'btn btn-small btn-danger', dataset: { fk: `forget:${p.id}` },
+      'aria-label': `Forget ${displayName(p)}`,
+      onclick: async () => {
+        const ok = await confirmDialog({
+          title: 'Forget this device?',
+          body: `“${displayName(p)}” is not plugged in. Its connections, name and settings are deleted. If you plug it in again it starts over as a new device.`,
+          confirmLabel: 'Forget', danger: true,
+        });
+        if (!ok) return;
+        try { await del(portUrl(p.id)); toast(`Forgot ${displayName(p)}`); } catch (e) { toast(e.message, 'error'); }
+      },
+    }, icon('trash', 14), 'Forget');
+  }
+
+  // One bar for all of them: the usual way to get several is moving a device to
+  // another hub port, which leaves the old entry behind.
+  function goneBar(gone) {
+    return h('div', { class: 'notice notice-warn gone-bar', role: 'note' },
+      icon('alert', 16),
+      h('p', {},
+        `${gone.length} device port${gone.length === 1 ? ' is' : 's are'} not plugged in. `,
+        h('span', { class: 'muted' }, 'A device without a serial number is told apart by the hub port it sits in; EMM carries its settings over when you move it, as long as that is unambiguous. Forget what is left over.')),
+      h('button', {
+        type: 'button', class: 'btn btn-small btn-danger', dataset: { fk: 'forget-all' },
+        onclick: async () => {
+          const ok = await confirmDialog({
+            title: 'Forget all unplugged devices?',
+            body: 'Every device that is not plugged in loses its connections, name and settings. Network ports you added yourself are kept.',
+            confirmLabel: 'Forget all', danger: true,
+          });
+          if (!ok) return;
+          try { const r = await post('/api/ports/forget-offline'); toast(`Forgot ${r.removed} device port${r.removed === 1 ? '' : 's'}`); } catch (e) { toast(e.message, 'error'); }
+        },
+      }, icon('trash', 14), 'Forget all'));
+  }
+
   function portRow(p) {
     const stats = h('div', { class: 'stats mono' });
     statEls.set(p.id, stats);
@@ -144,6 +184,7 @@ export function mount(root) {
       onChange: (v) => patch(portUrl(p.id), { hidden: v }),
     }));
     const buttons = [];
+    if (offline && ['usb', 'sim', 'virtual'].includes(p.kind)) buttons.push(forgetButton(p));
     if (p.output && !offline) {
       buttons.push(actionButton('Test note', 'note', async () => { await post(`${portUrl(p.id)}/test-note`); }, `note:${p.id}`));
       buttons.push(actionButton('Panic', 'panic', async () => { await post(`${portUrl(p.id)}/panic`); toast(`Sent all-notes-off to ${displayName(p)}`); }, `panic:${p.id}`));
@@ -260,6 +301,8 @@ export function mount(root) {
       host.append(h('div', { class: 'empty' }, icon('plug', 36), h('h2', {}, 'No MIDI devices yet'),
         h('p', {}, 'Plug a USB MIDI device into the hub. It appears here within a second or two.')));
     } else {
+      const gone = hw.filter((p) => p.online === false && ['usb', 'sim', 'virtual'].includes(p.kind));
+      if (gone.length) host.append(goneBar(gone));
       host.append(h('div', { class: 'cards' }, deviceCards(hw)));
     }
     host.append(h('div', { class: 'cards' }, networkSection(net), bleSection(ble)));

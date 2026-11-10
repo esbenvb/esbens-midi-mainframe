@@ -118,6 +118,8 @@ All JSON. Errors are `{"error": "message"}` with a 4xx/5xx status.
 | `PUT /api/connections` | body `{from, to, filter}`; creates or updates a connection |
 | `DELETE /api/connections?from=ID&to=ID` | removes a connection |
 | `PATCH /api/ports/{id}` | body any of `{alias, rtp, hidden}` |
+| `DELETE /api/ports/{id}` | forget an unplugged device: its connections (and its network endpoint's), name and settings. 409 while it is plugged in |
+| `POST /api/ports/forget-offline` | forget every unplugged device; `{removed}` |
 | `POST /api/ports/{id}/panic` | All Sound Off / All Notes Off / sustain off on every channel |
 | `POST /api/ports/{id}/test-note` | middle C, ch1, for 300 ms |
 | `GET /api/rtp` | network endpoints: `[{id, name, control_port, peers, device}]` |

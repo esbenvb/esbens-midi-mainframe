@@ -119,6 +119,65 @@ export function mount(root) {
       pwForm);
   }
 
+  // ---- SSH (device image only: /api/ssh says available:false elsewhere)
+  let ssh = null;
+  async function loadSsh({ force = true } = {}) {
+    try { ssh = await get('/api/ssh'); } catch (e) { /* keep the old values */ }
+    if (alive) renderSsh({ force });
+  }
+  async function saveSsh(body) {
+    ssh = (await put('/api/ssh', body)) || ssh;
+    if (alive) renderSsh({ force: true });
+  }
+
+  function sshCard() {
+    if (!ssh || !ssh.available) return null;
+    const pw = h('input', { id: 'ssh-pw', type: 'password', autocomplete: 'new-password', placeholder: ssh.password_set ? 'New password (leave empty to keep)' : 'Choose a password (8+ characters)', 'aria-describedby': 'ssh-hint' });
+    const keys = h('textarea', { id: 'ssh-keys', rows: '3', spellcheck: 'false', autocomplete: 'off', placeholder: 'ssh-ed25519 AAAA… you@laptop', 'aria-label': 'Public keys allowed to log in as root' });
+    keys.value = (ssh.keys || []).join('\n');
+    const keysDirty = () => keys.value.trim() !== (ssh.keys || []).join('\n').trim();
+    // What the form holds, to be sent with the switch or the Save button.
+    const typed = () => {
+      const b = {};
+      if (pw.value) b.password = pw.value;
+      if (keysDirty()) b.authorized_keys = keys.value;
+      return b;
+    };
+    const form = h('form', { class: 'inline-form', onsubmit: async (e) => {
+      e.preventDefault();
+      const b = typed();
+      if (!Object.keys(b).length) { toast('Nothing to save.'); return; }
+      try { await saveSsh(b); toast('SSH login saved'); } catch (er) { toast(er.message, 'error'); }
+    } },
+      h('label', { for: 'ssh-pw' }, 'Password for the user “root” ', ssh.password_set ? badge('set', 'ok') : null),
+      h('div', { class: 'inline-form-row' }, pw),
+      h('label', { for: 'ssh-keys' }, 'Public keys (optional, one per line) ', ssh.keys && ssh.keys.length ? badge(`${ssh.keys.length} saved`, 'ok') : null),
+      keys,
+      h('div', { class: 'btn-row' },
+        h('button', { id: 'ssh-save', type: 'submit', class: 'btn' }, 'Save'),
+        ssh.password_set ? h('button', { id: 'ssh-pw-remove', type: 'button', class: 'btn btn-danger', onclick: async () => {
+          if (ssh.enabled && !(ssh.keys && ssh.keys.length)) { toast('Switch SSH off first, or add a public key: SSH needs a way to log in.', 'error'); return; }
+          try { await saveSsh({ password: '' }); toast('SSH password removed'); } catch (er) { toast(er.message, 'error'); }
+        } }, 'Remove password') : null),
+      h('p', { id: 'ssh-hint', class: 'muted small' }, 'You need a password or a key (or both). The password is stored hashed; keys are public.'));
+
+    return h('article', { class: 'card' },
+      h('header', { class: 'card-head' }, h('h3', {}, icon('terminal', 16), ' SSH access'),
+        h('div', { class: 'badges' }, ssh.enabled ? badge(ssh.running ? 'on' : 'starting…', ssh.running ? 'ok' : 'warn') : badge('off'))),
+      ssh.needs_web_password ? notice('warn', icon('alert', 16), h('span', {}, 'Set a password for this web interface first (Settings above). SSH gives a root shell, so it stays locked until the web interface is protected too.')) : null,
+      h('div', { class: 'setting' }, toggleSwitch({
+        id: 'sw-ssh', checked: !!ssh.enabled, label: 'Allow SSH login', disabled: !!ssh.needs_web_password && !ssh.enabled,
+        hint: 'Off by default. Nothing listens on port 22 while this is off.',
+        onChange: async (v) => { await saveSsh({ enabled: v, ...typed() }); toast(v ? 'SSH is on' : 'SSH is off'); },
+      })),
+      form,
+      ssh.enabled ? kv([
+        ['Log in with', h('code', {}, `ssh root@${ssh.host}`)],
+        ['Host key', ssh.fingerprint ? h('code', { class: 'mono-block' }, ssh.fingerprint) : null],
+      ]) : null,
+      ssh.enabled ? h('p', { class: 'muted small' }, 'SSH stays on across reboots until you switch it off here. It is a full root shell: keep this device on a network you trust.') : null);
+  }
+
   function powerCard() {
     if (!sys || !sys.allow_power) return null;
     const act = (label, path, ic, body, done) => h('button', { type: 'button', class: 'btn btn-danger', onclick: async () => {
@@ -137,8 +196,9 @@ export function mount(root) {
   // (and steals focus from) the settings forms or the power buttons.
   const infoSlot = h('div');
   const settingsSlot = h('div');
+  const sshSlot = h('div');
   const powerSlot = h('div');
-  host.append(h('div', { class: 'cards' }, infoSlot, settingsSlot, powerSlot));
+  host.append(h('div', { class: 'cards' }, infoSlot, settingsSlot, sshSlot, powerSlot));
 
   // The Power card only depends on allow_power, which does not change while the
   // daemon runs: build it once (or when that flips), not on every tick. Rebuilt
@@ -157,6 +217,18 @@ export function mount(root) {
     restoreFocus(settingsSlot, saved, { 'pw-remove': 'web-pw' });
   }
 
+  // The SSH card is rebuilt only after its own actions (and when the web password
+  // changes), never on a timer, so typing in it is not interrupted.
+  let sshEditing = false;
+  function renderSsh({ force = false } = {}) {
+    if (sshEditing && !force) return; // somebody is typing: a refresh from elsewhere waits
+    const saved = captureFocus(sshSlot);
+    replace(sshSlot, sshCard());
+    restoreFocus(sshSlot, saved, { 'ssh-pw-remove': 'ssh-pw' });
+  }
+  sshSlot.addEventListener('focusin', (e) => { sshEditing = isTextField(e.target); });
+  sshSlot.addEventListener('focusout', () => { sshEditing = false; });
+
   settingsSlot.addEventListener('focusin', (e) => { editing = isTextField(e.target); });
   settingsSlot.addEventListener('focusout', () => {
     editing = false;
@@ -165,10 +237,11 @@ export function mount(root) {
     // would swallow the click on a Save button).
     setTimeout(() => { if (alive && pending && !editing && !settingsSlot.contains(document.activeElement)) renderSettings(); }, 0);
   });
-  const offs = [on('settings', () => loadSettings())];
+  const offs = [on('settings', () => { loadSettings(); loadSsh({ force: false }); })];
   renderInfo();
   renderSettings();
   loadSystem();
   loadSettings();
+  loadSsh();
   return () => { alive = false; offs.forEach((f) => f()); clearTimeout(timer); };
 }

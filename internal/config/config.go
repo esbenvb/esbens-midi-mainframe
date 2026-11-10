@@ -115,6 +115,13 @@ type State struct {
 		Salt string `json:"salt,omitempty"`
 		Hash string `json:"hash,omitempty"` // sha256(salt || password), hex
 	} `json:"web"`
+	// SSH is only used on the appliance image (see package sshaccess).
+	SSH struct {
+		Enabled bool `json:"enabled,omitempty"`
+		// PasswordHash is root's SSH password as a crypt(3) string ($6$...).
+		PasswordHash   string   `json:"password_hash,omitempty"`
+		AuthorizedKeys []string `json:"authorized_keys,omitempty"`
+	} `json:"ssh"`
 
 	// Network is owned by package netcfg (its Saved struct); kept opaque here
 	// so this package does not depend on it.

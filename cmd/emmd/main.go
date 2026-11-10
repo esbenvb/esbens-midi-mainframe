@@ -29,6 +29,7 @@ import (
 	"emm/internal/netcfg"
 	"emm/internal/router"
 	"emm/internal/rtpmidi"
+	"emm/internal/sshaccess"
 	"emm/internal/web"
 )
 
@@ -345,6 +346,18 @@ func run(ctx context.Context, o options, log *slog.Logger) error {
 		Reconcile:     rec.Trigger,
 		ApplySettings: apply,
 	}
+	// SSH access exists on the appliance image only (it ships Dropbear and the unit).
+	if sshaccess.Available() {
+		ctl := &sshaccess.Controller{Dir: filepath.Join(filepath.Dir(o.statePath), "ssh"), Log: log}
+		deps.SSH = sshAdapter{ctl}
+		if saved.SSH.Enabled {
+			go func() { // the settings were saved with SSH on: bring it back after a reboot
+				if err := ctl.Apply(sshaccess.Config{Enabled: true, PasswordHash: saved.SSH.PasswordHash, AuthorizedKeys: saved.SSH.AuthorizedKeys}); err != nil {
+					log.Warn("could not switch SSH access back on", "err", err)
+				}
+			}()
+		}
+	}
 	if netMgr != nil {
 		deps.Net = &netAdapter{m: netMgr}
 		deps.Wrap = netcfg.CaptiveMiddleware(netMgr)
@@ -415,6 +428,15 @@ func run(ctx context.Context, o options, log *slog.Logger) error {
 	}
 	return nil
 }
+
+// sshAdapter lets the web package drive the SSH controller without importing its types.
+type sshAdapter struct{ c *sshaccess.Controller }
+
+func (a sshAdapter) Apply(enabled bool, passwordHash string, keys []string) error {
+	return a.c.Apply(sshaccess.Config{Enabled: enabled, PasswordHash: passwordHash, AuthorizedKeys: keys})
+}
+
+func (a sshAdapter) Status() (bool, string) { return a.c.Status() }
 
 // saveNetwork returns the hook the network manager calls to persist its
 // settings. The credentials must be on disk before the radio switches, so it

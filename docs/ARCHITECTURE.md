@@ -55,6 +55,7 @@ networking, mDNS, Bluetooth and USB.
 | `internal/blemidi` | BLE-MIDI packet codec, BlueZ GATT server + advertisement over D-Bus |
 | `internal/netcfg` | `emm.txt` parser, NetworkManager config, WiFi scan/connect, AP + captive portal logic |
 | `internal/app` | Reconciler: network endpoints, default connections, moved-device adoption |
+| `internal/sshaccess` | Appliance image only: SSH on/off (Dropbear unit, root password hash, authorized keys, host key on the boot partition) |
 | `internal/config` | Persisted `state.json` (atomic writes) |
 | `internal/web` | HTTP API, SSE, captive-portal middleware, embedded UI (`internal/web/ui`) |
 | `cmd/emmd` | Wires it all together |
@@ -130,6 +131,7 @@ All JSON. Errors are `{"error": "message"}` with a 4xx/5xx status.
 | `POST /api/rtp/ports` | body `{name}` — add an extra virtual network port |
 | `DELETE /api/rtp/ports/{id}` | remove such a port |
 | `GET/PUT /api/settings` | `{rtp:{enabled}, ble:{enabled, name}, web:{password_set}}` |
+| `GET /api/ssh`, `PUT /api/ssh` | appliance image only (`available:false` elsewhere): `{enabled, password, authorized_keys}` in; `{available, enabled, running, password_set, keys, fingerprint, needs_web_password, host}` out. Switching on needs a web password and an SSH password or key |
 | `GET /api/network` | status of WiFi/Ethernet/AP, hostname, IPs |
 | `POST /api/network/scan` | rescan; returns networks |
 | `POST /api/network/wifi` | body `{ssid, password}`; joins and remembers it |

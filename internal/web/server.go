@@ -102,6 +102,7 @@ type Deps struct {
 
 	// Optional collaborators.
 	Net        Network
+	SSH        SSHControl // nil: no SSH switch (not the device image)
 	RTP        func() []RTPEndpoint
 	BLE        func() BLEStatus
 	BLEDefault string // default Bluetooth name
@@ -237,6 +238,9 @@ func (s *Server) routes() {
 	m.HandleFunc("DELETE /api/network/wifi", s.handleNetworkForget)
 	m.HandleFunc("PUT /api/network/ethernet", s.handleNetworkEthernet)
 	m.HandleFunc("PUT /api/network/hostname", s.handleNetworkHostname)
+
+	m.HandleFunc("GET /api/ssh", s.handleSSHGet)
+	m.HandleFunc("PUT /api/ssh", s.handleSSHPut)
 
 	m.HandleFunc("GET /api/system", s.handleSystem)
 	m.HandleFunc("POST /api/system/reboot", func(w http.ResponseWriter, r *http.Request) { s.handlePower(w, r, "reboot") })

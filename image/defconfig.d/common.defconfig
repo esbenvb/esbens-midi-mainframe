@@ -88,6 +88,12 @@ BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
 BR2_PACKAGE_BLUEZ5_UTILS_MONITOR=y
 # BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_NETWORK is not set
 
+# SSH: Dropbear. Nothing enables it; emmd starts packaging/systemd/emm-ssh.service when
+# the user switches SSH on in the web UI (and sets a password or key there).
+BR2_PACKAGE_DROPBEAR=y
+# BR2_PACKAGE_DROPBEAR_CLIENT is not set
+BR2_PACKAGE_DROPBEAR_DISABLE_REVERSEDNS=y
+
 # Firmware blobs for the Pi's WiFi/Bluetooth chip (BCM43455 and relatives).
 BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI=y
 BR2_PACKAGE_BRCMFMAC_SDIO_FIRMWARE_RPI_BT=y

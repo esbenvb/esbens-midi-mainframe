@@ -221,6 +221,10 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if body.Web != nil && body.Web.Password != nil && s.d.BootWebPassword != "" {
 		fixed = append(fixed, "web_password")
 	}
+	if body.Web != nil && body.Web.Password != nil && *body.Web.Password == "" && s.d.SSH != nil && s.d.Store.Snapshot().SSH.Enabled {
+		writeErr(w, http.StatusConflict, "SSH is switched on: turn it off before removing the web password")
+		return
+	}
 	if len(fixed) > 0 {
 		writeErr(w, http.StatusConflict, "controlled by emm.txt on the SD card ("+strings.Join(fixed, ", ")+"); edit or remove it there")
 		return

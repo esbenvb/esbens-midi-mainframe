@@ -20,7 +20,7 @@ BIN=${EMMD_BINARY:-$REPO/dist/emmd-linux-arm64}
     CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags '-s -w' -o dist/emmd-linux-arm64 ./cmd/emmd"
 
 PKG=$REPO/packaging
-for f in systemd/emmd.service avahi/emm-http.service nm/zz-emm.conf nm/zz-emm-appliance.conf \
+for f in systemd/emmd.service systemd/emm-ssh.service avahi/emm-http.service nm/zz-emm.conf nm/zz-emm-appliance.conf \
          udev/90-emm-usb-midi.rules emm.txt.example; do
   [ -f "$PKG/$f" ] || die "missing $PKG/$f"
 done
@@ -33,8 +33,11 @@ for u in dbus NetworkManager avahi-daemon bluetooth; do
     || die "$u.service is not in the target: check the package is enabled in the defconfig"
 done
 
+[ -x "$TARGET_DIR/usr/sbin/dropbear" ] || die "dropbear is not in the target: check BR2_PACKAGE_DROPBEAR in the defconfig"
+
 put 0755 "$BIN" "$TARGET_DIR/usr/bin/emmd"
 put 0644 "$PKG/systemd/emmd.service" "$TARGET_DIR/usr/lib/systemd/system/emmd.service"
+put 0644 "$PKG/systemd/emm-ssh.service" "$TARGET_DIR/usr/lib/systemd/system/emm-ssh.service"
 put 0644 "$PKG/avahi/emm-http.service" "$TARGET_DIR/etc/avahi/services/emm-http.service"
 put 0644 "$PKG/nm/zz-emm.conf" "$TARGET_DIR/etc/NetworkManager/conf.d/zz-emm.conf"
 put 0644 "$PKG/nm/zz-emm-appliance.conf" "$TARGET_DIR/etc/NetworkManager/conf.d/zz-emm-appliance.conf"
@@ -57,6 +60,14 @@ mkdir -p "$wants"
 for u in emmd NetworkManager avahi-daemon bluetooth; do
   ln -sf "/usr/lib/systemd/system/$u.service" "$wants/$u.service"
 done
+
+# SSH stays off until the user switches it on in the web UI. Buildroot's own
+# dropbear.service must not start it at boot, whatever the systemd presets say:
+# take any enabling symlink away, and keep the unit from being pulled in.
+rm -f "$TARGET_DIR"/etc/systemd/system/*.wants/dropbear.service
+ln -sf /dev/null "$TARGET_DIR/etc/systemd/system/dropbear.service"
+# Dropbear's host keys live on the boot partition (emmd points it there).
+rm -f "$TARGET_DIR/etc/dropbear"
 
 # Release stamp for support and debugging (read it on the console: cat /etc/emm-release).
 # Nothing reads it yet: the web UI's system page shows the version baked into emmd.

@@ -175,6 +175,11 @@ input[type="text"], input[type="password"], input[type="number"], select {
   width: 100%; min-height: 38px; padding: 6px 10px; border-radius: 10px;
   border: 1px solid var(--control); background: var(--field); color: var(--text);
 }
+textarea {
+  width: 100%; min-height: 84px; padding: 8px 10px; border-radius: 10px; resize: vertical;
+  border: 1px solid var(--control); background: var(--field); color: var(--text);
+}
+textarea:disabled { opacity: 0.55; cursor: default; }
 input[readonly] { color: var(--dim); }
 input:disabled, select:disabled { opacity: 0.55; cursor: default; }  /* a setting emm.txt fixes must not look editable */
 select { appearance: auto; }
@@ -432,6 +437,7 @@ legend small { font-weight: 400; margin-left: 4px; }
 .port-actions .btn-row { margin-left: auto; }
 .gone-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 14px; }
 .gone-bar p { margin: 0; flex: 1 1 260px; }
+.mono-block { font-family: var(--mono); font-size: 12.5px; }
 
 /* ---------- monitor ---------- */
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-bottom: 12px; }

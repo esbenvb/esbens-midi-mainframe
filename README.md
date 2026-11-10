@@ -61,6 +61,7 @@ theoretical, untested caveat about wired Ethernet on a Pi 3) is in
 | `internal/netcfg` | `emm.txt`, NetworkManager, setup AP, captive portal |
 | `internal/config` | persisted state |
 | `internal/app` | reconciliation: network endpoints, default connections, carrying a moved device's settings to its new USB port |
+| `internal/sshaccess` | the appliance image's SSH switch (Dropbear, root password and keys) |
 | `internal/web` | HTTP API, live events, embedded UI (`internal/web/ui`) |
 | `packaging/`, `scripts/`, `image/` | systemd units, installers, Buildroot appliance image |
 
@@ -94,6 +95,9 @@ are the first tools to reach for.
   with `web_password` in `emm.txt` (HTTP Basic, so only worthwhile on a trusted LAN).
 * **RTP-MIDI (AppleMIDI) has no authentication at all.** Anyone on the network can
   connect to a network MIDI endpoint and send SysEx to the synth behind it.
+* On the appliance image the System tab can switch **SSH** on (a root shell, with a
+  password and/or public keys you set there). It is off at every boot unless you
+  saved it on, and it cannot be switched on until the web interface has a password.
 * The **setup WiFi is open** unless `ap_password` is set in `emm.txt`; the home
   WiFi password you type there crosses the air once. Set `ap_password` if that
   matters to you.

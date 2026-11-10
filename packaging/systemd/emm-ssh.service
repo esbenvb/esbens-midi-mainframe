@@ -1,0 +1,16 @@
+[Unit]
+Description=EMM SSH access (Dropbear), started by emmd when it is switched on in the web UI
+After=network.target
+
+[Service]
+Type=simple
+# emmd writes the arguments: the host key on the boot partition (so its fingerprint
+# survives reboots), the port, and -s when there is no password. Without the file
+# dropbear finds no host key and refuses to start, which is the safe failure.
+EnvironmentFile=-/run/emm-ssh.env
+ExecStart=/usr/sbin/dropbear -F -E $DROPBEAR_ARGS
+Restart=on-failure
+RestartSec=2
+
+# No [Install] section on purpose: nothing starts this at boot except emmd, and
+# only when the setting is on.

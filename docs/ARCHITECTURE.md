@@ -31,7 +31,9 @@ networking, mDNS, Bluetooth and USB.
   destination. Realtime bytes still pass.
 * **Connections outlive devices.** A connection `from → to` is keyed by stable
   port IDs and persisted. Unplug a synth and the connection goes dormant; plug
-  it back (same USB port, or same serial number) and it comes back.
+  it back (same USB port, or same serial number) and it comes back. A device
+  without a serial number that is plugged into a *different* port is recognised
+  as the same one when that is unambiguous (see "Port IDs").
 * **Declarative config.** `emm.txt` on the FAT32 partition (hand-edited) plus
   `state.json` (written by the web UI) are rendered into runtime config at
   every boot. The root filesystem of the appliance image is read-only / in RAM,
@@ -52,6 +54,7 @@ networking, mDNS, Bluetooth and USB.
 | `internal/rtpmidi` | AppleMIDI session protocol + RTP-MIDI payload, mDNS (Avahi service files), `Manager` |
 | `internal/blemidi` | BLE-MIDI packet codec, BlueZ GATT server + advertisement over D-Bus |
 | `internal/netcfg` | `emm.txt` parser, NetworkManager config, WiFi scan/connect, AP + captive portal logic |
+| `internal/app` | Reconciler: network endpoints, default connections, moved-device adoption |
 | `internal/config` | Persisted `state.json` (atomic writes) |
 | `internal/web` | HTTP API, SSE, captive-portal middleware, embedded UI (`internal/web/ui`) |
 | `cmd/emmd` | Wires it all together |
@@ -67,6 +70,16 @@ IDs are stable across reboots and match `[A-Za-z0-9:._-]+`.
   connections. If two devices ever report the same serial, both fall back to
   path IDs for the rest of the run. A rawmidi device with several cables adds
   the cable index; further rawmidi devices on one card add `<dev>-<sub>`.
+  **Moving a device without a serial number to another hub port** would make it a
+  new device, with an offline duplicate left behind. `internal/app/adopt.go` undoes
+  that: when exactly one device of a model (vendor and product ID) is attached,
+  and exactly one path-identified device of the same model with the same cables
+  is remembered but absent, the two are the same device, and the old entry's
+  connections (including its network endpoint's), saved presets, name, hidden
+  flag and UDP port move to the new IDs. Nothing is guessed otherwise: with two
+  identical devices attached, several absent candidates, or a candidate that was
+  ever attached together with an identical device (`known[].twin`), the entries
+  stay and the user forgets the leftovers (`DELETE /api/ports/{id}`).
 * Other ALSA raw MIDI devices (only with `IncludeNonUSB`): `alsa:<cardid>:<cable>`.
 * RTP network port bound to a device: `rtp:` + the device's port ID.
 * Extra virtual network ports: `rtp:net-<slug>`.

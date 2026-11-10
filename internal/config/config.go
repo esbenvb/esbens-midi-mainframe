@@ -72,6 +72,11 @@ type KnownPort struct {
 	Output   bool            `json:"output"`
 	Detail   string          `json:"detail,omitempty"`
 	LastSeen int64           `json:"last_seen"` // unix seconds
+	// Twin records that a device of the same model, identified by its USB port
+	// rather than a serial number, was attached at the same time: this is one of
+	// several identical units, so it must never be mistaken for one that moved to
+	// another hub port (see app.adoptMoved).
+	Twin bool `json:"twin,omitempty"`
 }
 
 // VirtualRTP is an extra network port that is not tied to a device.

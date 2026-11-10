@@ -136,7 +136,10 @@ func displayName(p router.PortInfo, st *config.State) string {
 
 // Reconcile runs one pass.
 func (r *Reconciler) Reconcile() {
-	changed := r.updateKnown()
+	changed := r.adoptMoved()
+	if r.updateKnown() {
+		changed = true
+	}
 	if r.reconcileRTP() {
 		changed = true
 	}
@@ -150,12 +153,14 @@ func (r *Reconciler) Reconcile() {
 func (r *Reconciler) updateKnown() bool {
 	snap := r.Router.Snapshot()
 	now := time.Now().Unix()
+	twins := twinPorts(snap)
 	changed := false
 	r.Store.Update(func(st *config.State) {
 		for _, p := range snap.Ports {
 			k := config.KnownPort{Name: p.Name, Kind: p.Kind, Group: p.Group, Input: p.Input, Output: p.Output,
-				Detail: p.Detail, LastSeen: now}
+				Detail: p.Detail, LastSeen: now, Twin: twins[p.ID]}
 			old, ok := st.Known[p.ID]
+			k.Twin = k.Twin || old.Twin // once a twin, always one
 			if ok {
 				same := old
 				same.LastSeen = k.LastSeen

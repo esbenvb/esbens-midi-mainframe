@@ -59,7 +59,7 @@ theoretical, untested caveat about wired Ethernet on a Pi 3) is in
 | `internal/blemidi` | BLE-MIDI codec + BlueZ GATT server |
 | `internal/netcfg` | `emm.txt`, NetworkManager, setup AP, captive portal |
 | `internal/config` | persisted state |
-| `internal/app` | reconciliation: network endpoints and default connections |
+| `internal/app` | reconciliation: network endpoints, default connections, carrying a moved device's settings to its new USB port |
 | `internal/web` | HTTP API, live events, embedded UI (`internal/web/ui`) |
 | `packaging/`, `scripts/`, `image/` | systemd units, installers, Buildroot appliance image |
 

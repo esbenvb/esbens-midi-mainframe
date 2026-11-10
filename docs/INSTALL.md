@@ -98,6 +98,9 @@ A text file in the root of the card (`/boot/firmware/emm.txt` on Raspberry Pi OS
 
 The passwords are stored in plain text on the card.
 
+## Using the web interface
+
+* **Moving a device to another hub port.** A USB device that reports no serial number is told apart by the hub port it sits in. When you move one, EMM carries its connections, name and network port over to the new port, as long as that is unambiguous: exactly one device of that model is attached and exactly one is remembered as absent. With two identical devices it cannot tell them apart, so give them their own ports and leave them there.
 ## Updating
 
 * **A:** run `scripts/deploy.sh pi@…` again. Settings stay.

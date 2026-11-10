@@ -100,7 +100,14 @@ RTP UDP port), last-known port names (so dormant connections can still be shown
 by name), RTP/BLE settings and saved WiFi. `emm.txt` overrides the keys it
 contains on every boot.
 
-The file is written atomically and rarely. A corrupt `state.json` is moved aside
+The file is written rarely, and so that a power cut at any moment leaves a usable
+state. FAT32 cannot replace a file by rename in one crash-safe step, so a save
+never replaces anything: it writes `state.json.new` (sealed with a sequence number
+and a checksum, so that a half-written or stale file is recognised) and syncs it,
+moves `state.json` aside to `state.json.old`, renames `.new` into place and removes
+`.old`. `Open`, and every save before it writes, settle the card first: of `.new`,
+`state.json` and `.old` the newest complete copy becomes `state.json`. A `state.json`
+that is corrupt and has no good copy beside it is moved aside
 (`state.json.corrupt-<time>`) and the daemon starts empty. A `state.json` that
 cannot be *read* (I/O error, permissions) is left untouched: the daemon starts
 with empty in-memory state, refuses to write until it is restarted, and the UI

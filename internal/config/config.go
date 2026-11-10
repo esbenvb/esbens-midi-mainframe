@@ -2,17 +2,21 @@
 // per-port settings, the last-known description of every port that has been
 // seen, network port allocations and the settings the web UI can change.
 //
-// The file is rewritten atomically (temp file + fsync + rename) and rarely: the
-// appliance keeps it on a FAT32 partition, where a write interrupted by a power
-// cut is the main thing that can go wrong.
+// The file is rewritten rarely, and so that a power cut at any moment leaves a
+// complete state behind: the appliance keeps it on a FAT32 partition, which has
+// no journal. A save never replaces a file (that is several directory writes on
+// FAT); it writes a sealed copy, state.json.new, and swaps it in, and Open picks
+// the newest complete copy of state.json, .new and .old. The protocol, and what
+// "sealed" means, is described in atomic.go.
 //
 // Open never fails because of the file, so that a damaged card cannot keep the
 // device from starting, but it treats the three bad cases differently, by what
 // can still be saved:
 //
-//   - Missing file: an empty state; the first save creates the file.
-//   - Corrupt JSON: the file is moved aside (path.corrupt-<unix>) and an empty
-//     state is used; saving works as usual.
+//   - Missing file: an empty state (or the copy an interrupted first save
+//     left); the first save creates the file.
+//   - Corrupt JSON with no good copy beside it: the file is moved aside
+//     (path.corrupt-<unix>) and an empty state is used; saving works as usual.
 //   - Unreadable file (an I/O error, permission denied, a directory in its
 //     place, ...): the file may well hold good data that one read failed to
 //     deliver (the web password hash and the saved WiFi among it), so it is never
@@ -218,12 +222,15 @@ type Store struct {
 // way a marginal card does, whoever runs them.
 var readFile = os.ReadFile
 
-// Open loads path. A missing file yields an empty state. A corrupt file is
-// moved aside (path.corrupt-<unix>) and an empty state is used. A file that
-// cannot be read at all (I/O error, permission, a directory in its place) is
-// left exactly where it is: an empty state is used in memory and the store
-// refuses to write anything (see the package comment and Unreadable). Either
-// way a damaged card never prevents the device from starting.
+// Open loads path. A missing file yields an empty state, unless a save was
+// interrupted: then the newest complete copy among state.json, state.json.new and
+// state.json.old is used and put back as state.json (see the package comment
+// and settle). A corrupt file is moved aside (path.corrupt-<unix>) and, when no
+// other copy is good, an empty state is used. A file that cannot be read at all
+// (I/O error, permission, a directory in its place) is left exactly where it is:
+// the store refuses to write anything (see the package comment and Unreadable)
+// and runs on the best other copy if there is one, else on an empty state.
+// Either way a damaged card never prevents the device from starting.
 func Open(path string, log *slog.Logger) (*Store, error) {
 	if log == nil {
 		log = slog.Default()
@@ -232,26 +239,48 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 		path: path, log: log.With("component", "config"), SaveDelay: 500 * time.Millisecond, writable: true,
 		retryBase: defaultRetryBase, retryMax: defaultRetryMax, write: writeFileAtomic,
 	}
-	data, err := readFile(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-	case err != nil:
-		s.unreadable = err
-		s.log.Error("cannot read state file; starting with an empty state and leaving the file alone: nothing will be saved until emmd is restarted and can read it",
-			"path", path, "err", err)
-	default:
-		if err := json.Unmarshal(data, &s.st); err != nil {
-			bad := fmt.Sprintf("%s.corrupt-%d", path, time.Now().Unix())
-			s.log.Error("state file is corrupt; starting empty", "err", err, "moved_to", bad)
-			if rerr := os.Rename(path, bad); rerr != nil {
-				s.log.Warn("could not move corrupt state aside", "err", rerr)
+	c := scanCopies(path, validState, readFile)
+	if c.main.err != nil && !errors.Is(c.main.err, os.ErrNotExist) {
+		s.unreadable = c.main.err
+		s.log.Error("cannot read state file; leaving the file alone: nothing will be saved until emmd is restarted and can read it",
+			"path", path, "err", c.main.err)
+		// A complete copy left by an interrupted save is still better than nothing.
+		if best, which := c.bestOf(&c.nw, &c.old); best != nil {
+			s.log.Warn("running on the copy an interrupted save left", "from", which)
+			s.st, _ = parseState(best.data)
+		}
+	} else {
+		best, which := c.best()
+		if best != nil {
+			s.st, _ = parseState(best.data)
+			if which != "main" {
+				s.log.Warn("recovering the state from an interrupted save", "from", "state.json"+suffixOf(which))
 			}
-			s.st = State{}
+		}
+		if err := settle(path, c, s.log); err != nil {
+			s.log.Warn("could not tidy up after an interrupted save; the next save will try again", "err", err)
+			s.dirty = true
 		}
 	}
 	s.st.normalise()
 	s.cur, _ = json.Marshal(&s.st)
 	return s, nil
+}
+
+// parseState reads a state file's content. A file that a power cut left empty,
+// zero-filled or cut short does not parse; "null" would, so it is refused too.
+func parseState(data []byte) (State, error) {
+	var st State
+	if t := bytes.TrimSpace(data); len(t) == 0 || t[0] != '{' {
+		return st, errors.New("not a JSON object")
+	}
+	err := json.Unmarshal(data, &st)
+	return st, err
+}
+
+func validState(data []byte) error {
+	_, err := parseState(data)
+	return err
 }
 
 // Path returns the state file path.
@@ -425,42 +454,4 @@ func (s *Store) setWritable(v bool) {
 	s.mu.Lock()
 	s.writable = v
 	s.mu.Unlock()
-}
-
-func writeFileAtomic(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, ".state-*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	cleanup := func() { tmp.Close(); os.Remove(tmpName) }
-	if _, err := tmp.Write(data); err != nil {
-		cleanup()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		cleanup()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return err
-	}
-	// The file holds the WiFi passphrase in clear text and the web password
-	// hash: owner only. CreateTemp already made it 0600 (the umask can only
-	// narrow that); say so explicitly. Best effort: FAT has no modes.
-	_ = os.Chmod(tmpName, 0o600)
-	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
-		return err
-	}
-	if d, err := os.Open(dir); err == nil { // best effort: FAT may refuse
-		_ = d.Sync()
-		d.Close()
-	}
-	return nil
 }

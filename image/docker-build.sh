@@ -40,6 +40,15 @@ for board in "${BOARDS[@]}"; do
     continue
   fi
 
+  # Buildroot applies image/patches/linux/*.patch only when it extracts the kernel, so adding or
+  # changing a patch does not touch an existing build tree. Re-extract when the patch set changed.
+  psum=$(cat "$EXT"/patches/linux/*.patch 2>/dev/null | sha256sum | cut -d' ' -f1)
+  if [ -d "$O/build/linux-custom" ] && [ "$(cat "$O/.emm-linux-patches" 2>/dev/null)" != "$psum" ]; then
+    echo "==> [$board] kernel patches changed: re-extracting and re-patching the kernel"
+    make -C "$BR" O="$O" linux-dirclean
+  fi
+  echo "$psum" > "$O/.emm-linux-patches"
+
   echo "==> [$board] configuring the kernel (downloads it; checks the options we rely on)"
   make -C "$BR" O="$O" linux-configure
   kcfg=$(find "$O/build" -maxdepth 2 -name .config -path '*/linux-*' ! -path '*linux-headers*' ! -path '*linux-tools*' | head -n1)

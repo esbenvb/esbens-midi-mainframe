@@ -1,0 +1,37 @@
+Subject: [PATCH] brcmfmac: cfg80211: report port_authorized for PSK/SAE 4-way handshake offload
+
+Backport, reduced to what the Raspberry Pi 6.6 tree needs, of mainline
+commit 6fff9de5c5b4 ("wifi: brcmfmac: cfg80211: Report port_authorized
+for 4-way HS offload", Janne Grunau, Cc: stable).
+
+wpa_supplicant 2.11/2.12 expects NL80211_CMD_PORT_AUTHORIZED to finish
+authentication when the driver offloads the 4-way handshake. brcmfmac
+did the PSK/SAE handshake in firmware but never reported it, so on
+BCM43455 (Pi 3B+, Pi 4, CM4) wpa_supplicant sat in ASSOCIATED, hit its
+10 s timeout and dropped the connection. The Pi tree has no
+brcmf_has_pmkid() or FWSUP_ROAM, so the 802.1X/PMKID part of the
+mainline change does not apply and is left out.
+
+Applies to raspberrypi/linux 576cc10e (6.6.28) and a18d9ced (6.6.74).
+Drop this patch once the kernel pin includes the mainline commit.
+
+---
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+@@ -6562,6 +6562,16 @@
+ 		conn_params.resp_ie = conn_info->resp_ie;
+ 		conn_params.resp_ie_len = conn_info->resp_ie_len;
+ 		cfg80211_connect_done(ndev, &conn_params, GFP_KERNEL);
++		/* With WPA2-PSK/SAE the firmware has already done the 4-way
++		 * handshake. wpa_supplicant 2.11+ then waits for
++		 * NL80211_CMD_PORT_AUTHORIZED instead of seeing the
++		 * handshake itself, and times out after 10 s without it.
++		 */
++		if (completed &&
++		    (profile->use_fwsup == BRCMF_PROFILE_FWSUP_PSK ||
++		     profile->use_fwsup == BRCMF_PROFILE_FWSUP_SAE))
++			cfg80211_port_authorized(ndev, profile->bssid, NULL, 0,
++						 GFP_KERNEL);
+ 		brcmf_dbg(CONN, "Report connect result - connection %s\n",
+ 			  completed ? "succeeded" : "failed");
+ 	}

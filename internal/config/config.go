@@ -86,6 +86,15 @@ type VirtualRTP struct {
 	Port int    `json:"port,omitempty"`
 }
 
+// Preset is a saved routing: the whole connection matrix with its filters, under
+// a name, to bring back with one click.
+type Preset struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Saved       int64             `json:"saved"` // unix seconds
+	Connections []router.ConnSpec `json:"connections"`
+}
+
 // State is everything that is persisted.
 type State struct {
 	Version     int                     `json:"version"`
@@ -93,6 +102,7 @@ type State struct {
 	Ports       map[string]PortSettings `json:"ports"`
 	Known       map[string]KnownPort    `json:"known"`
 	VirtualRTP  []VirtualRTP            `json:"virtual_rtp,omitempty"`
+	Presets     []Preset                `json:"presets,omitempty"`
 
 	RTP struct {
 		Enabled *bool `json:"enabled,omitempty"` // nil = on

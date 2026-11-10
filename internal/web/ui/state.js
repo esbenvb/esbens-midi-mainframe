@@ -174,6 +174,7 @@ export function startEvents() {
   es.addEventListener('topology', (e) => safe(() => applyTopology(JSON.parse(e.data))));
   es.addEventListener('activity', (e) => safe(() => applyActivity(JSON.parse(e.data))));
   es.addEventListener('settings', (e) => safe(() => emit('settings', parse(e.data))));
+  es.addEventListener('presets', (e) => safe(() => emit('presets', parse(e.data))));
   es.addEventListener('network', (e) => safe(() => {
     const body = parse(e.data);
     if (body && body.status) S.network = body;

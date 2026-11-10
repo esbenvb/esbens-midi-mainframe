@@ -114,7 +114,7 @@ All JSON. Errors are `{"error": "message"}` with a 4xx/5xx status.
 | Method & path | Purpose |
 |---|---|
 | `GET /api/state` | `{ports, connections, hostname, version}` — topology |
-| `GET /api/events` | Server-Sent Events: `topology` (same body as `/api/state`), `activity`, `monitor` (only with `?monitor=1`), `settings`, `network` |
+| `GET /api/events` | Server-Sent Events: `topology` (same body as `/api/state`), `activity`, `monitor` (only with `?monitor=1`), `settings`, `network`, `presets` |
 | `PUT /api/connections` | body `{from, to, filter}`; creates or updates a connection |
 | `DELETE /api/connections?from=ID&to=ID` | removes a connection |
 | `PATCH /api/ports/{id}` | body any of `{alias, rtp, hidden}` |
@@ -122,6 +122,10 @@ All JSON. Errors are `{"error": "message"}` with a 4xx/5xx status.
 | `POST /api/ports/forget-offline` | forget every unplugged device; `{removed}` |
 | `POST /api/ports/{id}/panic` | All Sound Off / All Notes Off / sustain off on every channel |
 | `POST /api/ports/{id}/test-note` | middle C, ch1, for 300 ms |
+| `GET /api/presets` | saved routings: `[{id, name, saved, connections}]` |
+| `POST /api/presets` | body `{name, replace?}`; saves the current connections and filters under a name (409 if the name exists and `replace` is not true) |
+| `POST /api/presets/{id}/recall` | replaces the current connections with the preset's; `{name, applied, skipped:[{from,to,reason}]}`. Connections to devices this unit has never seen (or has forgotten) are skipped |
+| `PATCH /api/presets/{id}` / `DELETE /api/presets/{id}` | body `{name}` renames; delete |
 | `GET /api/rtp` | network endpoints: `[{id, name, control_port, peers, device}]` |
 | `POST /api/rtp/ports` | body `{name}` — add an extra virtual network port |
 | `DELETE /api/rtp/ports/{id}` | remove such a port |

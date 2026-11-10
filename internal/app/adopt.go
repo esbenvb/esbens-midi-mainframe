@@ -241,6 +241,23 @@ func (r *Reconciler) moveUnit(old, cur *usbUnit) {
 	}
 
 	r.Store.Update(func(st *config.State) {
+		// Saved presets name the device too: recalling one must not bring the old,
+		// offline ID back.
+		for i := range st.Presets {
+			conns := st.Presets[i].Connections
+			seen := map[string]bool{}
+			out := conns[:0:0]
+			for _, c := range conns {
+				c.From, c.To = remap(c.From), remap(c.To)
+				k := c.From + "\x00" + c.To
+				if c.From == c.To || seen[k] {
+					continue
+				}
+				seen[k] = true
+				out = append(out, c)
+			}
+			st.Presets[i].Connections = out
+		}
 		for oldID, newID := range rename {
 			ps, had := st.Ports[oldID]
 			if had {

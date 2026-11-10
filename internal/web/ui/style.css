@@ -409,6 +409,15 @@ legend small { font-weight: 400; margin-left: 4px; }
 .stepper .btn { padding: 3px 6px; min-width: 32px; }
 .fe-actions { display: flex; justify-content: space-between; gap: 8px; }
 
+/* ---------- presets ---------- */
+.mx-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.presets-pop { display: grid; gap: 10px; }
+.presets-pop h3 { margin: 0; }
+.presets { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.preset { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.preset-main { flex: 1; min-width: 0; display: grid; }
+.preset-name { font-weight: 650; overflow-wrap: anywhere; }
+
 /* ---------- devices ---------- */
 .ports { list-style: none; padding: 0; display: grid; gap: 10px; }
 .port { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 8px; background: var(--surface-2); }

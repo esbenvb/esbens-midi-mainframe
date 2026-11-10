@@ -5,7 +5,8 @@ A Raspberry Pi appliance that turns a USB hub full of synths into one patchbay:
 * **USB MIDI host** — plug synths, controllers and interfaces into a hub on the Pi.
 * **Routing matrix** — connect any input to any output, with per-connection
   filters (message types, channels, channel remap, transpose). Connections
-  survive unplugging and reboots.
+  survive unplugging and reboots. Save the whole routing as a named **preset**
+  and bring it back with one click.
 * **RTP-MIDI (AppleMIDI)** — every USB device also appears as its own network
   MIDI device, so a Mac, iPhone, Windows PC or Linux box can talk to any synth
   wirelessly: remote control, patch dumps, sample uploads.

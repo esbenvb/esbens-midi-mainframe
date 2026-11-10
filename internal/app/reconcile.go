@@ -177,10 +177,18 @@ func (r *Reconciler) updateKnown() bool {
 		// names a device's network endpoint ("rtp:<id>") refers to the device too:
 		// the endpoint is built from the device's Known entry (see reconcileRTP).
 		referenced := map[string]bool{}
-		for _, c := range st.Connections {
+		mark := func(c router.ConnSpec) {
 			for _, e := range []string{c.From, c.To} {
 				referenced[e] = true
 				referenced[strings.TrimPrefix(e, "rtp:")] = true
+			}
+		}
+		for _, c := range st.Connections {
+			mark(c)
+		}
+		for _, pr := range st.Presets { // a saved preset still names its devices
+			for _, c := range pr.Connections {
+				mark(c)
 			}
 		}
 		for id, k := range st.Known {

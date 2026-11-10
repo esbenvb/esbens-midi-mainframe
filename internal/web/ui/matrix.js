@@ -11,6 +11,7 @@ import {
 import { led } from './leds.js';
 import { openFilterEditor } from './filter-editor.js';
 import { toast } from './ui.js';
+import { presetsButton, closePresets } from './presets.js';
 
 const NET = '__net__';
 let netExpanded = false; // module level: survives switching tabs
@@ -115,7 +116,7 @@ function emptyState(m) {
 export function mount(root) {
   const mq = window.matchMedia('(max-width: 720px)');
   const host = h('section', { class: 'matrix', 'aria-label': 'MIDI routing matrix' });
-  root.append(host);
+  root.append(h('div', { class: 'mx-toolbar' }, presetsButton()), host);
 
   let sig = null;
   let view = null;
@@ -143,7 +144,7 @@ export function mount(root) {
   const onMq = () => render(true);
   mq.addEventListener('change', onMq);
   render(true);
-  return () => { offs.forEach((f) => f()); mq.removeEventListener('change', onMq); };
+  return () => { offs.forEach((f) => f()); mq.removeEventListener('change', onMq); closePresets(); };
 }
 
 // ---- wide: the grid --------------------------------------------------------

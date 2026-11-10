@@ -218,6 +218,12 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/ports/{id}/panic", s.handlePanic)
 	m.HandleFunc("POST /api/ports/{id}/test-note", s.handleTestNote)
 
+	m.HandleFunc("GET /api/presets", s.handlePresetsGet)
+	m.HandleFunc("POST /api/presets", s.handlePresetSave)
+	m.HandleFunc("POST /api/presets/{id}/recall", s.handlePresetRecall)
+	m.HandleFunc("PATCH /api/presets/{id}", s.handlePresetRename)
+	m.HandleFunc("DELETE /api/presets/{id}", s.handlePresetDelete)
+
 	m.HandleFunc("GET /api/rtp", s.handleRTPList)
 	m.HandleFunc("POST /api/rtp/ports", s.handleRTPAdd)
 	m.HandleFunc("DELETE /api/rtp/ports/{id}", s.handleRTPDelete)

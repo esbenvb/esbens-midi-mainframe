@@ -11,6 +11,9 @@ BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6=y
 # Buildroot's own Raspberry Pi hashes, plus ours (image/patches/) for kernel commits it does not pin.
 BR2_GLOBAL_PATCH_DIR="board/raspberrypi/patches $(BR2_EXTERNAL_EMM_PATH)/patches"
 BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+# Compiler cache: speeds up rebuilds (e.g. after a kernel patch changes). The cache lives in the
+# download volume; docker-build.sh sets BR2_CCACHE_DIR for it.
+BR2_CCACHE=y
 
 # System
 BR2_INIT_SYSTEMD=y

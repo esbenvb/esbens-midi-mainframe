@@ -24,6 +24,11 @@ ROOT=$(cd "$HERE/.." && pwd)
 # shellcheck source=scripts/lib.sh
 . "$ROOT/scripts/lib.sh"
 
+# A build runs for hours: keep the Mac awake (idle and, on AC power, system sleep) while it runs.
+if [ -z "${EMM_CAFFEINATED:-}" ] && have caffeinate; then
+  EMM_CAFFEINATED=1 exec caffeinate -is bash "${BASH_SOURCE[0]}" "$@"
+fi
+
 # Buildroot LTS pinned here. The SHA-256 comes from the signed release announcement
 # https://buildroot.org/downloads/buildroot-2025.02.19.tar.xz.sign
 BR_VERSION=${BR_VERSION:-2025.02.19}

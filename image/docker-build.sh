@@ -13,6 +13,7 @@ OUT=/out
 DL=/dl
 EXT=/work/image
 export BR2_DL_DIR=$DL
+export BR2_CCACHE_DIR=$DL/ccache   # compiler cache, kept in the download volume (see BR2_CCACHE)
 
 tarball=$DL/buildroot-$BR_VERSION.tar.xz
 if [ ! -f "$tarball" ]; then

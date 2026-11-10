@@ -45,7 +45,7 @@ The Pi 4 loads its GPU firmware (`start4.elf`, `fixup4.dat`) from the card. The 
 
 ## Building
 
-Requirements: Docker, and Go on the host (a full `build.sh` cross-compiles `emmd` there first, see `scripts/lib.sh`; with a prebuilt `dist/emmd-linux-arm64` and `--skip-emmd-build` Go is not needed; `--check-only` needs only Docker); **15–30 GB of free disk space in Docker's disk image**, about 8 GB of RAM given to Docker, and 1–2 hours *per board*. The build tree lives in Docker volumes (`emm-buildroot-out`, `emm-buildroot-dl`), not in the repository, because bind mounts are slow on macOS; `image/build.sh --clean` removes them.
+Requirements: Docker, and Go on the host (a full `build.sh` cross-compiles `emmd` there first, see `scripts/lib.sh`; with a prebuilt `dist/emmd-linux-arm64` and `--skip-emmd-build` Go is not needed; `--check-only` needs only Docker); **15–30 GB of free disk space in Docker's disk image**, about 8 GB of RAM given to Docker, and 1–2 hours *per board*. The build tree lives in Docker volumes (`emm-buildroot-out`, `emm-buildroot-dl`), not in the repository, because bind mounts are slow on macOS; `image/build.sh --clean` removes them. The download volume also holds a ccache (`/dl/ccache`, 5 GB by default), so rebuilding a kernel after a patch changes takes minutes. `build.sh` runs under `caffeinate` so the Mac does not sleep mid-build. If a build is much slower than 1–2 hours per board, check Docker Desktop's CPU and memory limits (Settings → Resources).
 
 ```bash
 image/build.sh --check-only        # first: validate the configuration, minutes, < 1 GB

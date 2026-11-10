@@ -57,6 +57,15 @@ var (
 	renameFn   = os.Rename
 )
 
+// isObject is the check a save makes of what is on the card: a JSON object. (Open
+// applies the stricter validState / validSystem of each file.)
+func isObject(data []byte) error {
+	if t := bytes.TrimSpace(data); len(t) == 0 || t[0] != '{' || !json.Valid(data) {
+		return errors.New("not a JSON object")
+	}
+	return nil
+}
+
 func syncDir(dir string) {
 	if d, err := os.Open(dir); err == nil { // best effort: FAT may refuse
 		_ = d.Sync()
@@ -323,7 +332,7 @@ func writeFileAtomic(path string, data []byte) error {
 
 	// Start from a settled card, so that the files below are the only ones there
 	// and the next sequence number is known.
-	c := scanCopies(path, validState, os.ReadFile)
+	c := scanCopies(path, isObject, os.ReadFile)
 	if c.main.err != nil && !errors.Is(c.main.err, os.ErrNotExist) {
 		return c.main.err // unreadable: never replaced
 	}

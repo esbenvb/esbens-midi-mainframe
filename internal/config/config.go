@@ -9,6 +9,21 @@
 // the newest complete copy of state.json, .new and .old. The protocol, and what
 // "sealed" means, is described in atomic.go.
 //
+// The settings live in two files in the same folder, so that what is harmless
+// and what is not can be treated differently (backed up, restored, shared):
+//
+//   - state.json: the application state: connections, per-port settings, the
+//     remembered ports, presets, and the RTP and BLE switches.
+//   - system.json: the device's network (WiFi, access point, Ethernet), the web
+//     password hash and the SSH settings. Never part of a backup.
+//
+// State is one struct in memory; the Web, SSH and Network fields are tagged
+// json:"-" so that encoding a State can never leak them, and the second file is
+// written from them explicitly (marshalSystem). A file is only written when its
+// own part changed. An installation from before the split has everything in
+// state.json: Open moves the secrets to system.json (written first) and rewrites
+// state.json without them.
+//
 // Open never fails because of the file, so that a damaged card cannot keep the
 // device from starting, but it treats the three bad cases differently, by what
 // can still be saved:
@@ -115,21 +130,74 @@ type State struct {
 		Enabled *bool  `json:"enabled,omitempty"` // nil = on
 		Name    string `json:"name,omitempty"`
 	} `json:"ble"`
+	// Web, SSH and Network are stored in system.json, not state.json (see the
+	// package comment); json:"-" keeps them out of anything that encodes a State.
 	Web struct {
 		Salt string `json:"salt,omitempty"`
 		Hash string `json:"hash,omitempty"` // sha256(salt || password), hex
-	} `json:"web"`
+	} `json:"-"`
 	// SSH is only used on the appliance image (see package sshaccess).
 	SSH struct {
 		Enabled bool `json:"enabled,omitempty"`
 		// PasswordHash is root's SSH password as a crypt(3) string ($6$...).
 		PasswordHash   string   `json:"password_hash,omitempty"`
 		AuthorizedKeys []string `json:"authorized_keys,omitempty"`
-	} `json:"ssh"`
+	} `json:"-"`
 
 	// Network is owned by package netcfg (its Saved struct); kept opaque here
 	// so this package does not depend on it.
+	Network json.RawMessage `json:"-"`
+}
+
+// systemFile is the part of a State that is stored in system.json.
+type systemFile struct {
+	Version int             `json:"version"`
+	Web     any             `json:"web"`
+	SSH     any             `json:"ssh"`
 	Network json.RawMessage `json:"network,omitempty"`
+}
+
+// marshalSystem encodes the device's network, web password and SSH settings (the
+// content of system.json).
+func (s *State) marshalSystem(indent bool) ([]byte, error) {
+	d := systemFile{Version: CurrentVersion, Web: s.Web, SSH: s.SSH, Network: s.Network}
+	if indent {
+		return json.MarshalIndent(&d, "", "  ")
+	}
+	return json.Marshal(&d)
+}
+
+// unmarshalSystem fills the Web, SSH and Network fields from the content of system.json.
+func (s *State) unmarshalSystem(data []byte) error {
+	var d struct{ Web, SSH, Network json.RawMessage }
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+	var web = s.Web
+	var ssh = s.SSH
+	if len(d.Web) > 0 {
+		if err := json.Unmarshal(d.Web, &web); err != nil {
+			return err
+		}
+	}
+	if len(d.SSH) > 0 {
+		if err := json.Unmarshal(d.SSH, &ssh); err != nil {
+			return err
+		}
+	}
+	s.Web, s.SSH = web, ssh
+	s.Network = nil
+	if n := bytes.TrimSpace(d.Network); len(n) > 0 && string(n) != "null" {
+		s.Network = append(json.RawMessage(nil), n...)
+	}
+	return nil
+}
+
+// legacySecrets are the keys that state.json held before system.json existed.
+type legacySecrets struct {
+	Web     json.RawMessage `json:"web"`
+	SSH     json.RawMessage `json:"ssh"`
+	Network json.RawMessage `json:"network"`
 }
 
 func (s *State) normalise() {
@@ -186,8 +254,9 @@ const (
 
 // Store owns the state file.
 type Store struct {
-	path string
-	log  *slog.Logger
+	path    string // state.json
+	sysPath string // system.json, next to it
+	log     *slog.Logger
 
 	// flushMu serialises Flush: at most one write is in flight, so a second
 	// Flush waits for it instead of reporting success while the data is still
@@ -197,8 +266,10 @@ type Store struct {
 
 	mu       sync.Mutex
 	st       State
-	cur      []byte // JSON of st as of the last Update/Open; lets no-op updates skip the write
-	dirty    bool
+	cur      []byte // JSON of the state.json part of st as of the last Update/Open; lets no-op updates skip the write
+	sysCur   []byte // the same for the system.json part
+	dirty    bool   // state.json owes a save
+	sysDirty bool   // system.json owes a save
 	timer    *time.Timer
 	retrying bool          // timer is a retry after a failed save, not the debounce timer
 	retry    time.Duration // delay of the next retry; 0 while saves succeed
@@ -207,6 +278,8 @@ type Store struct {
 	// unreadable is why state.json could not be read at Open (see the package
 	// comment). While it is set nothing is ever written.
 	unreadable error
+	// sysUnreadable is the same for system.json; it only stops system.json from being written.
+	sysUnreadable error
 
 	// Test hooks and tuning; set before the first Update.
 	retryBase, retryMax time.Duration
@@ -222,49 +295,120 @@ type Store struct {
 // way a marginal card does, whoever runs them.
 var readFile = os.ReadFile
 
-// Open loads path. A missing file yields an empty state, unless a save was
-// interrupted: then the newest complete copy among state.json, state.json.new and
-// state.json.old is used and put back as state.json (see the package comment
-// and settle). A corrupt file is moved aside (path.corrupt-<unix>) and, when no
-// other copy is good, an empty state is used. A file that cannot be read at all
-// (I/O error, permission, a directory in its place) is left exactly where it is:
-// the store refuses to write anything (see the package comment and Unreadable)
-// and runs on the best other copy if there is one, else on an empty state.
-// Either way a damaged card never prevents the device from starting.
+// SystemFileName is system.json's name; it sits in the same folder as the state file.
+const SystemFileName = "system.json"
+
+// Open loads the state file at path and system.json next to it. For each file: a
+// missing file yields nothing, unless a save was interrupted: then the newest
+// complete copy among the file, .new and .old is used and put back (see the
+// package comment and settle). A corrupt file is moved aside (<file>.corrupt-<unix>)
+// and, when no other copy is good, nothing is used. A file that cannot be read at
+// all (I/O error, permission, a directory in its place) is left exactly where it
+// is: that file is never written (see Unreadable), and the store runs on the best
+// other copy of it if there is one. Either way a damaged card never prevents the
+// device from starting.
 func Open(path string, log *slog.Logger) (*Store, error) {
 	if log == nil {
 		log = slog.Default()
 	}
 	s := &Store{
-		path: path, log: log.With("component", "config"), SaveDelay: 500 * time.Millisecond, writable: true,
+		path: path, sysPath: filepath.Join(filepath.Dir(path), SystemFileName),
+		log: log.With("component", "config"), SaveDelay: 500 * time.Millisecond, writable: true,
 		retryBase: defaultRetryBase, retryMax: defaultRetryMax, write: writeFileAtomic,
 	}
-	c := scanCopies(path, validState, readFile)
-	if c.main.err != nil && !errors.Is(c.main.err, os.ErrNotExist) {
-		s.unreadable = c.main.err
-		s.log.Error("cannot read state file; leaving the file alone: nothing will be saved until emmd is restarted and can read it",
-			"path", path, "err", c.main.err)
-		// A complete copy left by an interrupted save is still better than nothing.
-		if best, which := c.bestOf(&c.nw, &c.old); best != nil {
-			s.log.Warn("running on the copy an interrupted save left", "from", which)
-			s.st, _ = parseState(best.data)
+
+	appData, appErr, appTidy := s.load(path, validState)
+	sysData, sysErr, sysTidy := s.load(s.sysPath, validSystem)
+	s.unreadable, s.sysUnreadable = appErr, sysErr
+	if appErr != nil && sysData == nil && sysErr == nil {
+		// system.json does not exist yet, so the secrets may be in the state.json that
+		// could not be read (from before the split). Writing a system.json now would
+		// hide them from the next start: do not.
+		s.sysUnreadable = appErr
+	}
+	s.dirty, s.sysDirty = appTidy, sysTidy
+
+	if appData != nil {
+		s.st, _ = parseState(appData)
+	}
+	var leg legacySecrets
+	if appData != nil {
+		_ = json.Unmarshal(appData, &leg)
+	}
+	hasLegacy := len(leg.Web) > 0 || len(leg.SSH) > 0 || len(leg.Network) > 0
+	if sysData != nil {
+		if err := s.st.unmarshalSystem(sysData); err != nil { // checked by validSystem; belt and braces
+			s.log.Error("system file is not usable", "path", s.sysPath, "err", err)
 		}
-	} else {
-		best, which := c.best()
-		if best != nil {
-			s.st, _ = parseState(best.data)
-			if which != "main" {
-				s.log.Warn("recovering the state from an interrupted save", "from", "state.json"+suffixOf(which))
-			}
-		}
-		if err := settle(path, c, s.log); err != nil {
-			s.log.Warn("could not tidy up after an interrupted save; the next save will try again", "err", err)
-			s.dirty = true
+	} else if hasLegacy {
+		// state.json from before the split: it still has the secrets. Use them.
+		if err := s.st.unmarshalSystem(legacyAsSystem(leg)); err != nil {
+			s.log.Error("could not read the web, SSH and network settings from the old state file", "err", err)
 		}
 	}
 	s.st.normalise()
 	s.cur, _ = json.Marshal(&s.st)
+	s.sysCur, _ = s.st.marshalSystem(false)
+
+	if hasLegacy {
+		s.log.Info("moving the web password, SSH and network settings from state.json to system.json")
+		if sysData == nil && sysErr == nil {
+			// The secrets go to system.json first, and state.json is only rewritten
+			// without them once that has worked: until then the old file keeps everything.
+			s.mu.Lock()
+			appOwed := s.dirty
+			s.dirty, s.sysDirty = false, true
+			s.mu.Unlock()
+			if err := s.Flush(); err != nil {
+				s.mu.Lock()
+				s.dirty = appOwed
+				s.mu.Unlock()
+				return s, nil // the next save retries the migration step by step
+			}
+		}
+		if appErr == nil {
+			s.mu.Lock()
+			s.dirty = true // state.json is rewritten without the secrets
+			s.mu.Unlock()
+			_ = s.Flush()
+		}
+	}
 	return s, nil
+}
+
+// legacyAsSystem presents the secrets found in an old state.json as a system.json document.
+func legacyAsSystem(l legacySecrets) []byte {
+	b, _ := json.Marshal(l)
+	return b
+}
+
+// load reads one of the two files for Open. It returns the content to run on
+// (nil when there is none), why the file cannot be read (nil if it can), and
+// whether tidying up after an interrupted save failed, which makes the file owe a save.
+func (s *Store) load(path string, validate func([]byte) error) (data []byte, unreadable error, tidyFailed bool) {
+	c := scanCopies(path, validate, readFile)
+	if c.main.err != nil && !errors.Is(c.main.err, os.ErrNotExist) {
+		s.log.Error("cannot read state file; leaving the file alone: nothing will be saved to it until emmd is restarted and can read it",
+			"path", path, "err", c.main.err)
+		// A complete copy left by an interrupted save is still better than nothing.
+		if best, which := c.bestOf(&c.nw, &c.old); best != nil {
+			s.log.Warn("running on the copy an interrupted save left", "path", path, "from", which)
+			return best.data, c.main.err, false
+		}
+		return nil, c.main.err, false
+	}
+	best, which := c.best()
+	if best != nil && which != "main" {
+		s.log.Warn("recovering from an interrupted save", "from", filepath.Base(path)+suffixOf(which))
+	}
+	if err := settle(path, c, s.log); err != nil {
+		s.log.Warn("could not tidy up after an interrupted save; the next save will try again", "path", path, "err", err)
+		tidyFailed = true
+	}
+	if best == nil {
+		return nil, nil, tidyFailed
+	}
+	return best.data, nil, tidyFailed
 }
 
 // parseState reads a state file's content. A file that a power cut left empty,
@@ -283,8 +427,21 @@ func validState(data []byte) error {
 	return err
 }
 
+// validSystem says whether data is a system.json that can be used.
+func validSystem(data []byte) error {
+	if t := bytes.TrimSpace(data); len(t) == 0 || t[0] != '{' {
+		return errors.New("not a JSON object")
+	}
+	var st State
+	return st.unmarshalSystem(data)
+}
+
 // Path returns the state file path.
 func (s *Store) Path() string { return s.path }
+
+// SystemPath returns the path of system.json, which holds the network, web
+// password and SSH settings.
+func (s *Store) SystemPath() string { return s.sysPath }
 
 // View calls fn with the live state under the lock. fn must not retain it.
 func (s *Store) View(fn func(*State)) {
@@ -301,9 +458,12 @@ func (s *Store) Snapshot() State {
 }
 
 func (s *Store) cloneLocked() State {
-	b, _ := json.Marshal(s.st)
+	b, _ := json.Marshal(&s.st)
 	var c State
 	_ = json.Unmarshal(b, &c)
+	if sys, err := s.st.marshalSystem(false); err == nil {
+		_ = c.unmarshalSystem(sys)
+	}
 	c.normalise()
 	return c
 }
@@ -318,20 +478,30 @@ func (s *Store) Update(fn func(*State)) {
 	fn(&s.st)
 	s.st.normalise()
 	now, _ := json.Marshal(&s.st)
+	nowSys, _ := s.st.marshalSystem(false)
+	changed := false
 	if !bytes.Equal(now, s.cur) {
-		s.cur = now
-		s.dirty = true
-		if s.retrying && s.timer != nil {
-			// A retry is waiting out its back-off; a real change is retried
-			// after the normal debounce instead.
-			s.timer.Stop()
-			s.timer, s.retrying = nil, false
-		}
+		s.cur, s.dirty, changed = now, true, true
 	}
-	// An unreadable store never writes, so there is nothing to schedule.
-	if s.dirty && s.timer == nil && s.unreadable == nil {
+	if !bytes.Equal(nowSys, s.sysCur) {
+		s.sysCur, s.sysDirty, changed = nowSys, true, true
+	}
+	if changed && s.retrying && s.timer != nil {
+		// A retry is waiting out its back-off; a real change is retried
+		// after the normal debounce instead.
+		s.timer.Stop()
+		s.timer, s.retrying = nil, false
+	}
+	// A file that could not be read at startup is never written, so there is
+	// nothing to schedule for it.
+	if s.owesLocked() && s.timer == nil {
 		s.timer = time.AfterFunc(s.SaveDelay, func() { _ = s.Flush() })
 	}
+}
+
+// owesLocked reports whether a file that may be written owes a save. mu must be held.
+func (s *Store) owesLocked() bool {
+	return (s.dirty && s.unreadable == nil) || (s.sysDirty && s.sysUnreadable == nil)
 }
 
 // Flush writes pending changes now. Flushes are serialised: a Flush that
@@ -360,41 +530,80 @@ func (s *Store) flushLocked() (wrote bool, cb func(error), err error) {
 		s.timer.Stop()
 		s.timer, s.retrying = nil, false
 	}
-	if !s.dirty {
+	if !s.dirty && !s.sysDirty {
 		s.mu.Unlock()
 		return false, nil, nil
 	}
-	if s.unreadable != nil {
-		// Replacing a file that could not be read would throw away whatever it
-		// holds. Not a write attempt: no OnSaved, no retry timer, no log line per
-		// call (Open said it once).
-		err = fmt.Errorf("state not saved: %s could not be read at startup and is left untouched: %w", s.path, s.unreadable)
-		s.mu.Unlock()
-		return false, nil, err
+	// A file that could not be read at startup is not replaced: that would throw
+	// away whatever it holds. Not a write attempt: no OnSaved, no retry timer, no
+	// log line per call (Open said it once).
+	var refused error
+	type job struct {
+		path string
+		data []byte
+		sys  bool
 	}
+	var jobs []job
 	s.st.normalise()
-	data, err := json.MarshalIndent(&s.st, "", "  ")
-	s.dirty = false
+	if s.sysDirty {
+		if s.sysUnreadable != nil {
+			refused = fmt.Errorf("settings not saved: %s could not be read at startup and is left untouched: %w", s.sysPath, s.sysUnreadable)
+		} else if data, merr := s.st.marshalSystem(true); merr != nil {
+			err = merr
+		} else {
+			jobs = append(jobs, job{s.sysPath, append(data, '\n'), true})
+			s.sysDirty = false
+		}
+	}
+	if s.dirty {
+		if s.unreadable != nil {
+			refused = fmt.Errorf("state not saved: %s could not be read at startup and is left untouched: %w", s.path, s.unreadable)
+		} else if data, merr := json.MarshalIndent(&s.st, "", "  "); merr != nil {
+			err = merr
+		} else {
+			jobs = append(jobs, job{s.path, append(data, '\n'), false})
+			s.dirty = false
+		}
+	}
 	write := s.write
 	s.mu.Unlock()
-	if err == nil {
-		err = write(s.path, append(data, '\n'))
+	if len(jobs) == 0 {
+		if err == nil {
+			err = refused
+		}
+		return false, nil, err
+	}
+	// The secrets first: a changed password or WiFi is the one to get onto the card
+	// before anything else, and a migration needs them in place before state.json
+	// stops holding them.
+	failed := map[bool]bool{}
+	for _, j := range jobs {
+		if werr := write(j.path, j.data); werr != nil {
+			failed[j.sys] = true
+			if err == nil {
+				err = werr
+			}
+			s.log.Error("could not save state", "path", j.path, "err", werr)
+		}
 	}
 
 	s.mu.Lock()
 	s.lastErr = err
 	s.writable = err == nil
 	cb = s.OnSaved
+	if failed[true] {
+		s.sysDirty = true // still owed
+	}
+	if failed[false] {
+		s.dirty = true
+	}
 	if err == nil {
 		s.retry = 0
+		err = refused // everything that could be written was; something was refused
 	} else {
-		s.dirty = true // still owed
 		s.armRetryLocked()
 	}
 	s.mu.Unlock()
-	if err != nil {
-		s.log.Error("could not save state", "path", s.path, "err", err)
-	}
 	return true, cb, err
 }
 
@@ -418,7 +627,7 @@ func (s *Store) armRetryLocked() {
 func (s *Store) Writable() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.writable && s.unreadable == nil
+	return s.writable && s.unreadable == nil && s.sysUnreadable == nil
 }
 
 // Unreadable returns the error that kept Open from reading the state file, or
@@ -427,7 +636,10 @@ func (s *Store) Writable() bool {
 func (s *Store) Unreadable() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.unreadable
+	if s.unreadable != nil {
+		return s.unreadable
+	}
+	return s.sysUnreadable
 }
 
 // CheckWritable probes the state directory for write access without touching

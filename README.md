@@ -101,7 +101,7 @@ are the first tools to reach for.
 * The **setup WiFi is open** unless `ap_password` is set in `emm.txt`; the home
   WiFi password you type there crosses the air once. Set `ap_password` if that
   matters to you.
-* WiFi credentials are stored **in clear text** in `state.json` / `emm.txt` on the
+* WiFi credentials are stored **in clear text** in `system.json` / `emm.txt` on the
   FAT32 partition (the appliance has no encrypted storage), so treat the SD card
   like the password it contains.
 * The server rejects requests whose `Host` header is not an IP, `localhost`, the

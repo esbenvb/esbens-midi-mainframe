@@ -18,7 +18,7 @@ Linux unpacks the initramfs as its root filesystem (no root= on the command line
   └─ /init (Buildroot's script: mounts devtmpfs) → exec /sbin/init = systemd
        ├─ fstab: /dev/mmcblk0p1 → /boot  (the same FAT32 partition, rw,sync)
        ├─ NetworkManager, avahi-daemon, bluetoothd, wpa_supplicant (D-Bus activated)
-       └─ emmd  (reads /boot/emm.txt, keeps settings in /boot/emm/state.json)
+       └─ emmd  (reads /boot/emm.txt, keeps settings in /boot/emm/state.json and system.json)
 ```
 
 The whole system is therefore **one file per board** that the Pi firmware loads, and `/etc`, `/var`, `/tmp` live in RAM. On the card there is nothing but FAT32. One zip serves all boards because the kernels and initramfs are named per board and `config.txt` filters on `[pi3]`/`[pi02]`/`[pi4]`/`[pi5]`. Raspberry Pi's [model filters](https://www.raspberrypi.com/documentation/computers/config_txt.html#model-filters) make `[pi3]` match the Pi 3 B/B+/A+ (and CM3), `[pi02]` the Zero 2 W, `[pi4]` the Pi 400/CM4/CM4S too, and `[pi5]` the Pi 500/500+, CM5 and CM5 Lite too. The build installs the device trees of these boards:

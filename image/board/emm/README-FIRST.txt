@@ -33,7 +33,8 @@ What is on the card
   bootcode.bin, start*.elf, fixup*.dat, *.dtb   Raspberry Pi firmware pieces and device trees
   config.txt, cmdline.txt         boot configuration
   emm.txt                         your settings (optional)
-  emm/state.json                  settings made in the web interface (created by EMM)
+  emm/state.json                  routing, presets and names made in the web interface (created by EMM)
+  emm/system.json                 network, web password and SSH made in the web interface (secrets)
 
 Do not unplug the power while changing settings in the web interface; at all
 other times it is safe to just pull the plug.

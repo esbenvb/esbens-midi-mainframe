@@ -30,14 +30,14 @@ The installer, which is safe to run again:
 
 * installs `avahi-daemon network-manager wpasupplicant bluez dnsmasq-base iw rfkill wireless-regdb` if missing;
 * installs `/usr/bin/emmd`, the `emmd` systemd service, an Avahi service announcing the web interface, a NetworkManager settings file (WiFi power-save off, no connectivity probing), and a udev rule that keeps USB MIDI devices out of USB autosuspend;
-* creates `/boot/firmware/emm.txt` with everything commented out, **only if you have none**; it never overwrites `emm.txt` or `state.json`;
+* creates `/boot/firmware/emm.txt` with everything commented out, **only if you have none**; it never overwrites `emm.txt`, `state.json` or `system.json`;
 * sets the hostname to `emm` only if it is still a default one (`raspberrypi`, `localhost`, `debian`, or unset); `--no-hostname` leaves it alone;
 * warns if a USB OTG/gadget setup (`dtoverlay=dwc2`, `g_ether`, …) would stop the USB ports acting as a host, or if WiFi is blocked for lack of a country;
 * enables and starts everything. If systemd is not running (the installer is run in a chroot or container), it only copies the files, says so, and leaves the rest to a second run on the booted Pi.
 
 On an older image that still uses `dhcpcd`, it stops and tells you to reflash; `--force-network-switch` switches to NetworkManager anyway (an SSH session may drop). Remove EMM with `scripts/deploy.sh --uninstall pi@…` or `sudo scripts/install-on-pi.sh --uninstall`. That keeps your settings and your WiFi/Ethernet profiles, so the Pi stays reachable. Extra flags go after `--` with `deploy.sh`, e.g. `scripts/deploy.sh --uninstall pi@… -- --purge`:
 
-* `--purge` also deletes the settings: `/var/lib/emm/state.json`, `/etc/default/emmd`, `emm.txt` and `reset-network`. The NetworkManager profiles `emm-wifi` and `emm-eth` (the WiFi and Ethernet settings made through EMM) **are still kept**.
+* `--purge` also deletes the settings: everything in `/var/lib/emm/` (`state.json`, `system.json`), `/etc/default/emmd`, `emm.txt` and `reset-network`. The NetworkManager profiles `emm-wifi` and `emm-eth` (the WiFi and Ethernet settings made through EMM) **are still kept**.
 * `--purge-network` also deletes those two profiles, which hold your WiFi password. **This can strand the Pi:** if it is connected through one of them, it has no network after the next reboot (or `nmcli connection reload`), and no setup network either because EMM is gone, so you need an Ethernet cable or a keyboard and monitor. The installer prints a warning and does not reload NetworkManager itself, so an SSH session survives until you reboot.
 
 ## B. Appliance SD card
@@ -68,7 +68,7 @@ On an older image that still uses `dhcpcd`, it stops and tells you to reflash; `
 3. Unzip and copy the **contents** of the `emm-sdcard-<version>` folder onto the card (so that `config.txt` is in the root of the card, not in a subfolder).
 4. Put the card in the Pi, connect Ethernet (optional) and your powered USB hub, and power on.
 
-The appliance keeps your settings on the card itself: `emm.txt` (hand-written) and `emm/state.json` (written by the web interface). Pulling the plug is safe except in the second or so after you press *Save* in the web interface.
+The appliance keeps your settings on the card itself: `emm.txt` (hand-written) and, written by the web interface, `emm/state.json` (connections, presets, device names) and `emm/system.json` (network, web password and SSH, which are secrets). Pulling the plug is safe except in the second or so after you press *Save* in the web interface.
 
 ## First boot and network setup
 
@@ -127,4 +127,4 @@ The passwords are stored in plain text on the card.
 
 **Sample/patch transfers are slow or stall.** Use Ethernet or 5 GHz WiFi. RTP-MIDI over WiFi was not built for bulk data; the USB side is not the bottleneck.
 
-**Start over.** Create `reset-network` (see above). To clear all web-interface settings, delete `emm/state.json` on the card (`/var/lib/emm/state.json` on Raspberry Pi OS) and reboot.
+**Start over.** Create `reset-network` (see above). To clear the routing, presets and device names, delete `emm/state.json*` on the card (`/var/lib/emm/state.json*` on Raspberry Pi OS); to clear the network, web password and SSH settings, delete `emm/system.json*`; then reboot. (The `*` is for the `.new`, `.old` and `.corrupt-…` files a power cut can leave.)

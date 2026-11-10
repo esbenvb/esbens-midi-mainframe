@@ -414,8 +414,9 @@ func TestConcurrentFlushesLeaveNewestOnDisk(t *testing.T) {
 	}
 }
 
-// state.json holds the WiFi passphrase in clear and the web password hash.
-func TestStateFileIsPrivate(t *testing.T) {
+// system.json holds the WiFi passphrase in clear and the web password hash, and
+// state.json is private too.
+func TestStateFilesArePrivate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 	// A file left by an older version with the wide mode is narrowed on the next save.
@@ -425,18 +426,21 @@ func TestStateFileIsPrivate(t *testing.T) {
 	os.Chmod(path, 0o644)
 	s, _ := Open(path, quiet())
 	s.Update(func(st *State) {
+		st.BLE.Name = "x"
 		st.Network = json.RawMessage(`{"wifi_password":"secret"}`)
 		st.SetWebPassword("pw")
 	})
 	if err := s.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := info.Mode().Perm(); got != 0o600 {
-		t.Fatalf("state.json mode %o, want 600", got)
+	for _, f := range []string{"state.json", "system.json"} {
+		info, err := os.Stat(filepath.Join(dir, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("%s mode %o, want 600", f, got)
+		}
 	}
 }
 

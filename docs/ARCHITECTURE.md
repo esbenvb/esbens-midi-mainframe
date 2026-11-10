@@ -56,7 +56,7 @@ networking, mDNS, Bluetooth and USB.
 | `internal/netcfg` | `emm.txt` parser, NetworkManager config, WiFi scan/connect, AP + captive portal logic |
 | `internal/app` | Reconciler: network endpoints, default connections, moved-device adoption |
 | `internal/sshaccess` | Appliance image only: SSH on/off (Dropbear unit, root password hash, authorized keys, host key on the boot partition) |
-| `internal/config` | Persisted `state.json` (atomic writes) |
+| `internal/config` | Persisted `state.json` and `system.json` (crash-safe writes) |
 | `internal/web` | HTTP API, SSE, captive-portal middleware, embedded UI (`internal/web/ui`) |
 | `cmd/emmd` | Wires it all together |
 
@@ -97,8 +97,17 @@ Users can delete or filter those connections like any other.
 
 `config.State` (JSON) holds connections, per-port settings (alias, RTP on/off,
 RTP UDP port), last-known port names (so dormant connections can still be shown
-by name), RTP/BLE settings and saved WiFi. `emm.txt` overrides the keys it
-contains on every boot.
+by name), presets, RTP/BLE settings, and the saved network, web password hash and
+SSH settings. `emm.txt` overrides the keys it contains on every boot.
+
+It is stored in two files in the same folder: `state.json` holds the application
+state (everything above except the last three), `system.json` holds the secrets
+(network, web password hash, SSH). They are separate so that the first can be
+backed up, restored and shared without leaking the second. In memory it is still
+one struct; `Web`, `SSH` and `Network` are tagged `json:"-"`, so encoding a `State`
+can never include them. Each file is written only when its own part changed. A
+`state.json` from before the split is migrated at first start (secrets to
+`system.json` first).
 
 The file is written rarely, and so that a power cut at any moment leaves a usable
 state. FAT32 cannot replace a file by rename in one crash-safe step, so a save

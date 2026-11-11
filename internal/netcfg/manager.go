@@ -23,7 +23,7 @@ type EthernetSettings struct {
 	DNS     []string `json:"dns,omitempty"`
 }
 
-// Saved is what the web UI persists (in the daemon's state.json). Settings in
+// Saved is what the web UI persists (in the daemon's system.json). Settings in
 // emm.txt override the matching fields on every boot.
 type Saved struct {
 	Hostname     string           `json:"hostname,omitempty"`

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install (or remove) Esben's MIDI Mainframe on Raspberry Pi OS Lite.
 # Run ON the Pi, as root. Safe to run again: it never overwrites emm.txt or
-# state.json, and replaces only files it owns.
+# state.json / system.json, and replaces only files it owns.
 #
 #   sudo scripts/install-on-pi.sh [--binary PATH]
 #   sudo scripts/install-on-pi.sh --uninstall [--purge] [--purge-network]
@@ -30,7 +30,7 @@ Usage: install-on-pi.sh [options]
                           to NetworkManager (may drop your SSH session)
   --uninstall             remove EMM (keeps settings and the WiFi/Ethernet profiles;
                           see --purge and --purge-network)
-  --purge                 with --uninstall: also delete state.json, /etc/default/emmd
+  --purge                 with --uninstall: also delete state.json and system.json, /etc/default/emmd
                           and emm.txt. The emm-wifi / emm-eth NetworkManager profiles
                           are kept, so the Pi stays reachable.
   --purge-network         with --uninstall: also delete the emm-wifi / emm-eth
@@ -302,7 +302,7 @@ EOF
   fi
 fi
 
-# Never overwrite a user's emm.txt (or state.json). The .example is reference only.
+# Never overwrite a user's emm.txt (or state.json / system.json). The .example is reference only.
 run install -D -m 0644 "$ROOT/packaging/emm.txt.example" "$BOOT/emm.txt.example"
 if [ -e "$BOOT/emm.txt" ]; then
   log "keeping your existing $BOOT/emm.txt"

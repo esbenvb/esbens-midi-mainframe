@@ -11,7 +11,7 @@
 //   - emm.txt on the FAT32 partition: hand-edited, wins for every key it
 //     contains (see ParseBootConfig for the format);
 //   - Saved: what the web UI changed, persisted by the caller (the daemon keeps
-//     it in state.json) through the Load and Save hooks.
+//     it in system.json, with the web password and SSH settings) through the Load and Save hooks.
 //
 // The rendered NetworkManager keyfiles (emm-wifi, emm-eth, emm-setup-ap in
 // /etc/NetworkManager/system-connections, mode 0600) are derived data, written

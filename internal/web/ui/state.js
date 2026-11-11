@@ -32,6 +32,9 @@ export const ck = (from, to) => from + '\u0000' + to;
 export const displayName = (p) => (p && (p.alias || p.name || p.id)) || '?';
 export const portById = (id) => S.byId.get(id);
 export const nameOfId = (id) => (S.byId.has(id) ? displayName(S.byId.get(id)) : id);
+// How a port's kind is named for people (USB, Bluetooth, ...).
+export const KIND_LABEL = { usb: 'USB', rtp: 'RTP-MIDI', ble: 'Bluetooth', virtual: 'Virtual', sim: 'Simulated' };
+export const kindLabel = (kind) => KIND_LABEL[kind] || kind || '';
 export const isNetworkPort = (p) => p.kind === 'rtp' || p.kind === 'ble';
 
 // ---- filters ---------------------------------------------------------------

@@ -4,7 +4,7 @@
 
 import { h, clear, replace } from './dom.js';
 import { icon } from './icons.js';
-import { S, on, displayName, nameOfId } from './state.js';
+import { S, on, displayName, nameOfId, kindLabel } from './state.js';
 
 const MAX_ROWS = 500;     // rows kept in the DOM
 const MAX_RAW = 1500;     // entries kept for re-filtering
@@ -46,7 +46,9 @@ export function mount(root) {
   function fillPortSel() {
     const cur = portSel.value;
     replace(portSel, h('option', { value: '' }, 'All ports'),
-      S.ports.map((p) => h('option', { value: p.id }, displayName(p))));
+      // The type after the name tells apart a device's USB port from its network endpoint, and
+      // two devices with the same name.
+      S.ports.map((p) => h('option', { value: p.id }, `${displayName(p)} (${kindLabel(p.kind)})`)));
     portSel.value = S.byId.has(cur) ? cur : '';
     portFilter = portSel.value;
   }

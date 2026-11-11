@@ -4,11 +4,10 @@
 import { h, clear, replace, fmtBytes, fmtNum } from './dom.js';
 import { icon } from './icons.js';
 import { get, post, patch, del } from './api.js';
-import { S, on, emit, displayName, isNetworkPort } from './state.js';
+import { S, on, emit, displayName, isNetworkPort, kindLabel } from './state.js';
 import { led } from './leds.js';
 import { toast, badge, spinner, toggleSwitch, confirmDialog, isTextField } from './ui.js';
 
-const KIND_LABEL = { usb: 'USB', rtp: 'RTP-MIDI', ble: 'Bluetooth', virtual: 'Virtual', sim: 'Simulated' };
 const portUrl = (id) => `/api/ports/${id}`; // ids are [A-Za-z0-9:._-] so no escaping is needed
 
 export function mount(root) {
@@ -209,7 +208,7 @@ export function mount(root) {
       groups.get(k).push(p);
     }
     return Array.from(groups, ([name, list]) => {
-      const kinds = Array.from(new Set(list.map((p) => KIND_LABEL[p.kind] || p.kind)));
+      const kinds = Array.from(new Set(list.map((p) => kindLabel(p.kind))));
       const allOffline = list.every((p) => p.online === false);
       return h('article', { class: 'card device' + (allOffline ? ' is-offline' : '') },
         h('header', { class: 'card-head' },

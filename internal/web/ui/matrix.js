@@ -10,7 +10,7 @@ import {
 } from './state.js';
 import { led } from './leds.js';
 import { openFilterEditor } from './filter-editor.js';
-import { toast } from './ui.js';
+import { toast, notice } from './ui.js';
 import { presetsButton, closePresets } from './presets.js';
 
 const NET = '__net__';
@@ -100,6 +100,13 @@ function legend() {
     h('li', { class: 'legend-hint' }, 'Click to toggle · F or right-click: filters · arrow keys move'));
 }
 
+// Shown under the matrix: the network ports in it are RTP-MIDI, and that has limits.
+function rtpNotice() {
+  return h('div', { class: 'mx-note' }, notice('info', icon('wifi', 16),
+    h('span', {}, h('strong', {}, 'Network MIDI (RTP-MIDI) has limited speed and reliability. '),
+      'It is fine for playing music and for loading a patch now and then, but do not rely on it for backing up or restoring a device, or for firmware updates. Use a USB cable for those.')));
+}
+
 function emptyState(m) {
   if (!m.hasHardware) {
     return h('div', { class: 'empty' },
@@ -134,7 +141,7 @@ export function mount(root) {
     const keep = host.contains(a) && a.dataset && a.dataset.from ? [a.dataset.from, a.dataset.to] : null;
     clear(host);
     view = mq.matches ? renderNarrow(m, host, () => render(true)) : renderWide(m, host, () => render(true));
-    host.append(legend());
+    host.append(legend(), rtpNotice());
     if (m.hidden) host.append(h('p', { class: 'muted small' }, `${m.hidden} hidden port${m.hidden === 1 ? '' : 's'} not shown (see the Devices tab).`));
     view.paint();
     if (keep && view.focus) view.focus(keep[0], keep[1]);

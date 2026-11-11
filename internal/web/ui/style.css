@@ -366,6 +366,7 @@ legend small { font-weight: 400; margin-left: 4px; }
 .legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 12px 2px 0; font-size: 13px; color: var(--dim); align-items: center; }
 .legend li { display: inline-flex; align-items: center; gap: 7px; }
 .legend-hint { margin-left: auto; }
+.mx-note { margin-top: 14px; }
 .lg { display: inline-block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; }
 .lg-on { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .lg-filter { background: var(--accent); box-shadow: 0 0 0 3px var(--led-soft), 0 0 0 4px var(--led); }

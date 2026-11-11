@@ -155,6 +155,8 @@ func (c *fileCopy) exists() bool { return c.err == nil }
 
 func readCopy(path string, validate func([]byte) error, read func(string) ([]byte, error)) fileCopy {
 	b, err := read(path)
+	// Windows editors save a UTF-8 file with a byte order mark; JSON does not allow one.
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
 	c := fileCopy{path: path, data: b, err: err}
 	if err != nil || validate(b) != nil {
 		return c

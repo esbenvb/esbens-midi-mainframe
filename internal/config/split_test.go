@@ -318,3 +318,96 @@ func TestUnreadableOldStateFileKeepsSystemFileUnwritten(t *testing.T) {
 		t.Fatal("state.json was touched")
 	}
 }
+
+// If system.json cannot be written at all, state.json keeps the secrets, however
+// often it is saved meanwhile: they must never exist only in memory.
+func TestSecretsNeverLeaveStateJSONWhileSystemJSONCannotBeWritten(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	os.WriteFile(path, []byte(legacyState), 0o600)
+	// A directory in the way: every attempt to write system.json fails.
+	if err := os.Mkdir(filepath.Join(dir, "system.json.new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := Open(path, quiet())
+	s.SaveDelay = time.Millisecond
+	s.Update(func(st *State) { st.BLE.Name = "app change" })
+	if err := s.Flush(); err == nil {
+		t.Fatal("system.json cannot be written: Flush must say so")
+	}
+	if m := readJSON(t, path); m["network"] == nil || m["web"] == nil || m["ssh"] == nil {
+		t.Fatalf("state.json lost the secrets although system.json was never written: %v", keys(m))
+	}
+	// A restart now still has everything.
+	reopened, _ := Open(path, quiet())
+	if snap := reopened.Snapshot(); string(snap.Network) == "" || !snap.WebPasswordSet() || snap.BLE.Name != "app change" {
+		t.Fatalf("after a restart: %+v", snap)
+	}
+	// The card recovers: the next save finishes the move, in one Flush.
+	os.Remove(filepath.Join(dir, "system.json.new"))
+	s.Update(func(st *State) { st.BLE.Name = "later" })
+	if err := s.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if m := readJSON(t, filepath.Join(dir, "system.json")); m["network"] == nil {
+		t.Fatal("system.json lacks the network settings")
+	}
+	if m := readJSON(t, path); m["network"] != nil || m["web"] != nil || m["ssh"] != nil {
+		t.Fatalf("state.json still has secrets: %v", keys(m))
+	}
+}
+
+func keys(m map[string]json.RawMessage) []string {
+	var k []string
+	for n := range m {
+		k = append(k, n)
+	}
+	return k
+}
+
+// A block of the old file that cannot be read is dropped, the rest is kept, and the
+// old file is kept as a whole before it is rewritten.
+func TestOldStateFileWithAnUnreadableSecretBlockIsKept(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	bad := strings.Replace(legacyState, `"enabled": true`, `"enabled": "yes"`, 1)
+	os.WriteFile(path, []byte(bad), 0o600)
+	s, _ := Open(path, quiet())
+	st := s.Snapshot()
+	if string(st.Network) != `{"wifi_ssid":"home","wifi_password":"hunter2"}` || !st.WebPasswordSet() || st.SSH.PasswordHash != "" {
+		t.Fatalf("got %s %+v %+v", st.Network, st.Web, st.SSH)
+	}
+	m, _ := filepath.Glob(filepath.Join(dir, "state.json.corrupt-*"))
+	if len(m) != 1 {
+		t.Fatalf("a copy of the old file must be kept: %v", dirNames(t, dir))
+	}
+	if b, _ := os.ReadFile(m[0]); !strings.Contains(string(b), "hunter2") || !strings.Contains(string(b), `"yes"`) {
+		t.Fatalf("the kept copy is not the old file: %s", b)
+	}
+}
+
+// A system.json written by hand, as when preparing a card: no seal, a byte order
+// mark from a Windows editor, and only the keys it needs.
+func TestHandWrittenSystemFileLoads(t *testing.T) {
+	for name, content := range map[string]string{
+		"minimal":  `{"network": {"wifi_ssid": "Studio", "wifi_password": "secret"}}`,
+		"with BOM": "\xef\xbb\xbf" + `{"network": {"wifi_ssid": "Studio", "wifi_password": "secret"}}`,
+		"CRLF":     "{\r\n  \"network\": {\"wifi_ssid\": \"Studio\", \"wifi_password\": \"secret\"}\r\n}\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, "system.json"), []byte(content), 0o600)
+			s, _ := Open(filepath.Join(dir, "state.json"), quiet())
+			var n struct {
+				SSID string `json:"wifi_ssid"`
+			}
+			json.Unmarshal(s.Snapshot().Network, &n)
+			if n.SSID != "Studio" {
+				t.Fatalf("network: %s", s.Snapshot().Network)
+			}
+			if m, _ := filepath.Glob(filepath.Join(dir, "*.corrupt-*")); len(m) != 0 {
+				t.Fatalf("the file was moved aside: %v", m)
+			}
+		})
+	}
+}

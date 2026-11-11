@@ -270,6 +270,11 @@ type Store struct {
 	sysCur   []byte // the same for the system.json part
 	dirty    bool   // state.json owes a save
 	sysDirty bool   // system.json owes a save
+	// legacy: state.json on the card still holds the secrets from before the split,
+	// and system.json does not have them safe yet. Until it does, state.json is only
+	// ever written with the secrets in it, so no failure can leave them nowhere.
+	legacy   bool
+	migrated bool // the pass that just ran cleared legacy: Flush writes state.json once more
 	timer    *time.Timer
 	retrying bool          // timer is a retry after a failed save, not the debounce timer
 	retry    time.Duration // delay of the next retry; 0 while saves succeed
@@ -342,44 +347,68 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 		}
 	} else if hasLegacy {
 		// state.json from before the split: it still has the secrets. Use them.
-		if err := s.st.unmarshalSystem(legacyAsSystem(leg)); err != nil {
-			s.log.Error("could not read the web, SSH and network settings from the old state file", "err", err)
-		}
+		s.takeLegacy(leg, appData, path)
 	}
 	s.st.normalise()
 	s.cur, _ = json.Marshal(&s.st)
 	s.sysCur, _ = s.st.marshalSystem(false)
 
-	if hasLegacy {
+	if hasLegacy && appErr == nil {
 		s.log.Info("moving the web password, SSH and network settings from state.json to system.json")
-		if sysData == nil && sysErr == nil {
-			// The secrets go to system.json first, and state.json is only rewritten
-			// without them once that has worked: until then the old file keeps everything.
-			s.mu.Lock()
-			appOwed := s.dirty
-			s.dirty, s.sysDirty = false, true
-			s.mu.Unlock()
-			if err := s.Flush(); err != nil {
-				s.mu.Lock()
-				s.dirty = appOwed
-				s.mu.Unlock()
-				return s, nil // the next save retries the migration step by step
-			}
+		s.mu.Lock()
+		switch {
+		case sysData != nil:
+			s.dirty = true // the secrets are safe in system.json already: state.json is just rewritten without them
+		case sysErr == nil:
+			s.legacy, s.sysDirty = true, true
+		default:
+			s.legacy = true // system.json cannot be read: state.json keeps the secrets
 		}
-		if appErr == nil {
-			s.mu.Lock()
-			s.dirty = true // state.json is rewritten without the secrets
-			s.mu.Unlock()
-			_ = s.Flush()
-		}
+		s.mu.Unlock()
+		// The first flush writes system.json (state.json, if it owes a save, still with
+		// the secrets); once system.json is safe the second writes state.json without them.
+		_ = s.Flush()
+		_ = s.Flush()
 	}
 	return s, nil
 }
 
-// legacyAsSystem presents the secrets found in an old state.json as a system.json document.
-func legacyAsSystem(l legacySecrets) []byte {
-	b, _ := json.Marshal(l)
-	return b
+// takeLegacy reads the secrets out of an old state.json (the keys web, ssh and
+// network). A block that does not parse is dropped, and then a copy of the whole
+// old file is kept as state.json.corrupt-<unix> before anything is rewritten,
+// so nothing is destroyed silently.
+func (s *Store) takeLegacy(leg legacySecrets, original []byte, path string) {
+	bad := false
+	if len(leg.Web) > 0 && string(bytes.TrimSpace(leg.Web)) != "null" {
+		if err := json.Unmarshal(leg.Web, &s.st.Web); err != nil {
+			s.log.Error("the web password in the old state file is not readable", "err", err)
+			s.st.Web, bad = struct {
+				Salt string `json:"salt,omitempty"`
+				Hash string `json:"hash,omitempty"`
+			}{}, true
+		}
+	}
+	if len(leg.SSH) > 0 && string(bytes.TrimSpace(leg.SSH)) != "null" {
+		if err := json.Unmarshal(leg.SSH, &s.st.SSH); err != nil {
+			s.log.Error("the SSH settings in the old state file are not readable", "err", err)
+			s.st.SSH, bad = struct {
+				Enabled        bool     `json:"enabled,omitempty"`
+				PasswordHash   string   `json:"password_hash,omitempty"`
+				AuthorizedKeys []string `json:"authorized_keys,omitempty"`
+			}{}, true
+		}
+	}
+	if n := bytes.TrimSpace(leg.Network); len(n) > 0 && string(n) != "null" {
+		s.st.Network = append(json.RawMessage(nil), n...)
+	}
+	if bad {
+		keep := asideName(path)
+		if err := os.WriteFile(keep, original, 0o600); err != nil {
+			s.log.Error("could not keep a copy of the old state file", "err", err)
+		} else {
+			s.log.Warn("kept a copy of the old state file, with what could not be read in it", "as", keep)
+		}
+	}
 }
 
 // load reads one of the two files for Open. It returns the content to run on
@@ -515,6 +544,16 @@ func (s *Store) owesLocked() bool {
 func (s *Store) Flush() error {
 	s.flushMu.Lock()
 	wrote, cb, err := s.flushLocked()
+	// The pass that made system.json safe may have written state.json with the old
+	// secrets still in it (see legacy); write it again, without them.
+	s.mu.Lock()
+	again := s.migrated
+	s.migrated = false
+	s.mu.Unlock()
+	if again && err == nil {
+		wrote2, cb2, err2 := s.flushLocked()
+		wrote, cb, err = wrote || wrote2, cb2, err2
+	}
 	s.flushMu.Unlock()
 	if wrote && cb != nil {
 		cb(err)
@@ -544,6 +583,7 @@ func (s *Store) flushLocked() (wrote bool, cb func(error), err error) {
 		sys  bool
 	}
 	var jobs []job
+	sysQueued := false
 	s.st.normalise()
 	if s.sysDirty {
 		if s.sysUnreadable != nil {
@@ -552,13 +592,13 @@ func (s *Store) flushLocked() (wrote bool, cb func(error), err error) {
 			err = merr
 		} else {
 			jobs = append(jobs, job{s.sysPath, append(data, '\n'), true})
-			s.sysDirty = false
+			s.sysDirty, sysQueued = false, true
 		}
 	}
 	if s.dirty {
 		if s.unreadable != nil {
 			refused = fmt.Errorf("state not saved: %s could not be read at startup and is left untouched: %w", s.path, s.unreadable)
-		} else if data, merr := json.MarshalIndent(&s.st, "", "  "); merr != nil {
+		} else if data, merr := s.marshalAppLocked(); merr != nil {
 			err = merr
 		} else {
 			jobs = append(jobs, job{s.path, append(data, '\n'), false})
@@ -593,6 +633,15 @@ func (s *Store) flushLocked() (wrote bool, cb func(error), err error) {
 	cb = s.OnSaved
 	if failed[true] {
 		s.sysDirty = true // still owed
+	} else if sysQueued && s.legacy {
+		// system.json has the secrets now: state.json can be rewritten without them.
+		s.legacy, s.migrated = false, true
+		if s.unreadable == nil {
+			s.dirty = true
+			if s.timer == nil {
+				s.timer = time.AfterFunc(s.SaveDelay, func() { _ = s.Flush() })
+			}
+		}
 	}
 	if failed[false] {
 		s.dirty = true
@@ -605,6 +654,33 @@ func (s *Store) flushLocked() (wrote bool, cb func(error), err error) {
 	}
 	s.mu.Unlock()
 	return true, cb, err
+}
+
+// marshalAppLocked encodes the content of state.json. Normally that is the
+// application state only; while the secrets are not safe in system.json yet
+// (legacy) it carries them too, as the old format did. mu must be held.
+func (s *Store) marshalAppLocked() ([]byte, error) {
+	if !s.legacy {
+		return json.MarshalIndent(&s.st, "", "  ")
+	}
+	app, err := json.Marshal(&s.st)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(app, &m); err != nil {
+		return nil, err
+	}
+	if m["web"], err = json.Marshal(s.st.Web); err != nil {
+		return nil, err
+	}
+	if m["ssh"], err = json.Marshal(s.st.SSH); err != nil {
+		return nil, err
+	}
+	if len(s.st.Network) > 0 {
+		m["network"] = s.st.Network
+	}
+	return json.MarshalIndent(m, "", "  ")
 }
 
 // armRetryLocked advances the back-off and, unless a timer is already pending
@@ -666,4 +742,36 @@ func (s *Store) setWritable(v bool) {
 	s.mu.Lock()
 	s.writable = v
 	s.mu.Unlock()
+}
+
+// ParseApplication reads the application state of a backup (the content of a
+// state.json). It can only ever produce what state.json holds: a document that
+// also carries "web", "ssh" or "network" keys gets them ignored, so restoring a
+// backup cannot set a password or a network. A state saved by a newer version
+// is refused rather than half understood.
+func ParseApplication(data []byte) (State, error) {
+	st, err := parseState(data)
+	if err != nil {
+		return State{}, err
+	}
+	if st.Version > CurrentVersion {
+		return State{}, fmt.Errorf("the backup is from a newer version of EMM (settings format %d, this one reads %d)", st.Version, CurrentVersion)
+	}
+	st.normalise()
+	return st, nil
+}
+
+// ApplyBackup replaces the application state with that of from: per-port
+// settings, remembered ports, network MIDI ports, presets, and the RTP and BLE
+// switches. Not Connections, which belong to the router (apply those through it),
+// and never Web, SSH or Network: those are the device's own and are not part of a
+// backup.
+func (s *State) ApplyBackup(from *State) {
+	s.Ports = from.Ports
+	s.Known = from.Known
+	s.VirtualRTP = from.VirtualRTP
+	s.Presets = from.Presets
+	s.RTP = from.RTP
+	s.BLE = from.BLE
+	s.normalise()
 }

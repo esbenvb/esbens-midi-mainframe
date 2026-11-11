@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Esben's MIDI Mainframe: user manual</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+  @page :first { margin: 0; }
+  :root { --ink: #1d2329; --dim: #5a6570; --line: #d5dbe0; --accent: #0f766e; --accent-soft: #e3f2f0; --warn: #a15c00; --warn-soft: #fdf3e1; --code: #f1f3f5; }
+  * { box-sizing: border-box; }
+  html { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 10.2pt; line-height: 1.48; color: var(--ink); }
+  body { margin: 0; }
+  h1, h2, h3 { line-height: 1.25; break-after: avoid; }
+  h1 { font-size: 20pt; margin: 0 0 6mm; padding-bottom: 2mm; border-bottom: 2px solid var(--accent); break-before: page; }
+  h2 { font-size: 13.5pt; margin: 8mm 0 3mm; }
+  h3 { font-size: 11pt; margin: 5mm 0 2mm; color: var(--accent); }
+  p { margin: 0 0 3mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1mm; }
+  a { color: var(--accent); text-decoration: none; }
+  code, kbd { font-family: Menlo, Consolas, "Courier New", monospace; font-size: 9pt; background: var(--code); padding: 0.3mm 1.2mm; border-radius: 1mm; }
+  pre { font-family: Menlo, Consolas, "Courier New", monospace; font-size: 8.6pt; background: var(--code); padding: 3mm 4mm; border-radius: 1.5mm; overflow: hidden; white-space: pre-wrap; margin: 0 0 3mm; break-inside: avoid; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 0 0 4mm; font-size: 9.4pt; }
+  th, td { border: 1px solid var(--line); padding: 1.5mm 2.2mm; text-align: left; vertical-align: top; }
+  th { background: #f4f6f7; }
+  tr { break-inside: avoid; }
+  figure { margin: 0 0 5mm; break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 1.5mm; display: block; }
+  figure.narrow img { width: 62%; margin: 0 auto; }
+  figure.small img { width: 52%; margin: 0 auto; }
+  figcaption { font-size: 8.8pt; color: var(--dim); margin-top: 1.5mm; }
+  .box { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 2.5mm 4mm; margin: 0 0 4mm; border-radius: 1.5mm; break-inside: avoid; }
+  .box.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .box strong.t { display: block; margin-bottom: 1mm; }
+  .small { font-size: 9pt; color: var(--dim); }
+  .nobreak { break-inside: avoid; }
+
+  /* cover */
+  .cover { height: 297mm; padding: 38mm 26mm 20mm; background: linear-gradient(180deg, #f4faf9 0%, #ffffff 60%); display: flex; flex-direction: column; break-after: page; }
+  .badge { display: inline-block; font-family: Menlo, Consolas, monospace; font-weight: 700; font-size: 20pt; letter-spacing: 1px; color: #8a5200; background: #fff7e6; border: 2px solid #e8c88a; border-radius: 3mm; padding: 3mm 6mm; align-self: flex-start; }
+  .cover h1 { font-size: 34pt; line-height: 1.12; border: 0; margin: 14mm 0 4mm; padding: 0; break-before: avoid; }
+  .cover .sub { font-size: 14pt; color: var(--dim); margin-bottom: 12mm; max-width: 130mm; }
+  .cover .meta { margin-top: auto; font-size: 9.5pt; color: var(--dim); }
+  .cover .meta p { margin-bottom: 1mm; }
+
+  /* contents */
+  .toc h1 { break-before: avoid; }
+  .toc ol { list-style: none; padding: 0; counter-reset: s; }
+  .toc > ol > li { counter-increment: s; margin-bottom: 1.6mm; font-size: 11pt; }
+  .toc > ol > li::before { content: counter(s) ".  "; color: var(--dim); display: inline-block; width: 7mm; }
+  .toc ol ol { padding-left: 7mm; counter-reset: none; margin: 0.5mm 0 1.5mm; }
+  .toc ol ol li { font-size: 9.6pt; color: var(--dim); margin: 0; }
+  .toc ol ol li::before { content: none; }
+
+  /* diagram */
+  svg text { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+</style>
+</head>
+<body>
+
+<!-- ============================ COVER ============================ -->
+<section class="cover">
+  <div class="badge">EMM</div>
+  <h1>Esben's MIDI Mainframe</h1>
+  <div class="sub">A Raspberry Pi that turns a USB hub full of synths into one patchbay, with network and Bluetooth MIDI built in.</div>
+  <div class="meta">
+    <p><strong>User manual</strong> · version {{VERSION}} · {{DATE}}</p>
+    <p>Source, issues and the technical documentation: the project's repository (see <code>README.md</code>).</p>
+    <p>This manual describes the software; where a statement has not been tried on real hardware yet, it says so.</p>
+  </div>
+</section>
+
+<!-- ============================ CONTENTS ============================ -->
+<section class="toc">
+  <h1>Contents</h1>
+  <ol>
+    <li><a href="#what">What EMM is</a>
+      <ol><li>The idea in one picture</li><li>What you can do with it</li></ol></li>
+    <li><a href="#need">What you need</a>
+      <ol><li>The Pi, the hub, the power</li></ol></li>
+    <li><a href="#install">Getting EMM onto a Pi</a>
+      <ol><li>The appliance SD card</li><li>Raspberry Pi OS and the installer</li></ol></li>
+    <li><a href="#first">First start and network setup</a>
+      <ol><li>Ethernet, WiFi and the setup network</li><li>emm.txt</li><li>Starting over</li></ol></li>
+    <li><a href="#ui">The web interface</a>
+      <ol><li>Matrix</li><li>Devices</li><li>Monitor</li><li>Network</li><li>System</li></ol></li>
+    <li><a href="#connect">Connecting a computer, phone or tablet</a>
+      <ol><li>Network MIDI (RTP-MIDI)</li><li>Bluetooth MIDI</li><li>What network MIDI is not for</li></ol></li>
+    <li><a href="#keep">Presets, backups and moving devices</a>
+      <ol><li>Presets</li><li>Backup and restore</li><li>Moving a device to another hub port</li></ol></li>
+    <li><a href="#security">Security</a></li>
+    <li><a href="#trouble">Troubleshooting</a></li>
+    <li><a href="#ref">Reference</a>
+      <ol><li>emm.txt keys</li><li>Files on the card</li><li>Limits and what is not included</li><li>Words used in this manual</li></ol></li>
+  </ol>
+</section>
+
+<!-- ============================ 1 WHAT ============================ -->
+<section id="what">
+<h1>1. What EMM is</h1>
+
+<h2>The idea in one picture</h2>
+<p>You plug your synths, drum machines, keyboards and interfaces into a powered USB hub, and the hub into a Raspberry Pi. EMM sees every MIDI port and lets you connect any output to any input from a web page. Every USB device also appears on the network as a MIDI device of its own, so a laptop or tablet can talk to a synth without a cable.</p>
+
+<figure>
+<svg viewBox="0 0 760 200" width="100%" role="img" aria-label="Diagram: synths on a USB hub connect to the Raspberry Pi running EMM, which connects over network and Bluetooth to a computer and a phone, and over the web to a browser.">
+  <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8z" fill="#5a6570"/></marker></defs>
+  <g font-size="13" fill="#1d2329">
+    <rect x="10" y="20" width="140" height="34" rx="6" fill="#fff" stroke="#9aa5ae"/><text x="80" y="42" text-anchor="middle">Synth</text>
+    <rect x="10" y="64" width="140" height="34" rx="6" fill="#fff" stroke="#9aa5ae"/><text x="80" y="86" text-anchor="middle">Drum machine</text>
+    <rect x="10" y="108" width="140" height="34" rx="6" fill="#fff" stroke="#9aa5ae"/><text x="80" y="130" text-anchor="middle">Keyboard</text>
+    <rect x="10" y="152" width="140" height="34" rx="6" fill="#fff" stroke="#9aa5ae"/><text x="80" y="174" text-anchor="middle">Sampler</text>
+    <rect x="200" y="62" width="100" height="76" rx="8" fill="#f4f6f7" stroke="#9aa5ae"/><text x="250" y="96" text-anchor="middle">Powered</text><text x="250" y="114" text-anchor="middle">USB hub</text>
+    <rect x="350" y="40" width="150" height="120" rx="10" fill="#e3f2f0" stroke="#0f766e" stroke-width="2"/><text x="425" y="86" text-anchor="middle" font-weight="700">Raspberry Pi</text><text x="425" y="106" text-anchor="middle">running EMM</text><text x="425" y="128" text-anchor="middle" font-size="11" fill="#5a6570">routing matrix</text>
+    <rect x="560" y="12" width="190" height="48" rx="6" fill="#fff" stroke="#9aa5ae"/><text x="655" y="32" text-anchor="middle">Computer</text><text x="655" y="50" text-anchor="middle" font-size="11" fill="#5a6570">network MIDI, WiFi or Ethernet</text>
+    <rect x="560" y="76" width="190" height="48" rx="6" fill="#fff" stroke="#9aa5ae"/><text x="655" y="96" text-anchor="middle">Phone or tablet</text><text x="655" y="114" text-anchor="middle" font-size="11" fill="#5a6570">Bluetooth LE MIDI</text>
+    <rect x="560" y="140" width="190" height="48" rx="6" fill="#fff" stroke="#9aa5ae"/><text x="655" y="160" text-anchor="middle">Any browser</text><text x="655" y="178" text-anchor="middle" font-size="11" fill="#5a6570">the web page, http://emm.local</text>
+  </g>
+  <g stroke="#5a6570" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+    <path d="M150 37 L198 84"/><path d="M150 81 L198 94"/><path d="M150 125 L198 108"/><path d="M150 169 L198 120"/>
+    <path d="M300 100 L348 100" marker-start="url(#ar)"/>
+    <path d="M500 76 L558 40" marker-start="url(#ar)"/><path d="M500 100 L558 100" marker-start="url(#ar)"/><path d="M500 124 L558 160" marker-start="url(#ar)"/>
+  </g>
+</svg>
+<figcaption>How the parts fit together. Every USB device sends and receives MIDI through the hub, and also gets a network MIDI port of its own.</figcaption>
+</figure>
+
+<h2>What you can do with it</h2>
+<ul>
+  <li><strong>Route MIDI between devices</strong> with a matrix: any output to any input, several at once. Each connection can filter message types, limit channels, force a channel, or transpose notes. Connections survive unplugging and reboots.</li>
+  <li><strong>Save the whole routing as a preset</strong> and bring it back with one click.</li>
+  <li><strong>Reach every synth from a computer over the network</strong> (RTP-MIDI, also called AppleMIDI or network MIDI) for remote control, playing and loading a patch now and then.</li>
+  <li><strong>Appear as a Bluetooth MIDI device</strong> for phones and tablets.</li>
+  <li><strong>Watch the MIDI traffic</strong> live in a monitor, and send a test note or an "all notes off" to any device.</li>
+  <li><strong>Back up and restore</strong> the routing, presets and device names.</li>
+</ul>
+<div class="box warn"><strong class="t">Know the limits of network MIDI</strong>
+<p>Network MIDI over WiFi or Ethernet is fine for playing music and for loading a patch now and then. Its speed and reliability are limited, so do not rely on it for backing up or restoring a device, or for firmware updates: use a USB cable for those. Section 6 explains why.</p></div>
+</section>
+
+<!-- ============================ 2 NEED ============================ -->
+<section id="need">
+<h1>2. What you need</h1>
+
+<h2>The Pi, the hub, the power</h2>
+<table>
+  <tr><th style="width:28%">Board</th><th style="width:20%">Verdict</th><th>Notes</th></tr>
+  <tr><td><strong>Raspberry Pi 4 B, Pi 400</strong></td><td>Good</td><td>Gigabit Ethernet is separate from USB; dual-band WiFi.</td></tr>
+  <tr><td><strong>Raspberry Pi 5</strong></td><td>Good</td><td>More headroom. Needs the 27 W supply for full USB power.</td></tr>
+  <tr><td>Pi 500 / 500+, CM4, CM5</td><td>Probably good, untried</td><td>Same chips as the Pi 4 and 5. Compute modules need a carrier board with USB and may need USB host mode switched on, which the appliance card does not do: use Raspberry Pi OS for them.</td></tr>
+  <tr><td>Pi 3 B / B+</td><td>Works</td><td>Its Ethernet shares one USB 2.0 link with your MIDI devices (see the hardware notes in the repository). WiFi is not affected. 64-bit OS only.</td></tr>
+  <tr><td>Pi Zero 2 W</td><td>Works, with limits</td><td>One USB data port, so you need an OTG hub with its own power. 2.4 GHz WiFi only, which Bluetooth shares.</td></tr>
+  <tr><td>Pi 1, 2, Zero, Zero W</td><td>Not supported</td><td>32-bit only.</td></tr>
+</table>
+
+<h3>The USB hub matters most</h3>
+<ul>
+  <li><strong>Powered</strong>, with a proper supply. The Pi cannot power several bus-powered devices.</li>
+  <li><strong>USB 2.0 high-speed</strong> or better. Prefer a hub with one transaction translator per port ("multi-TT"): with a single-TT hub all full-speed devices behind it share one 12 Mbit/s channel, which hurts when several synths send large SysEx dumps at once.</li>
+  <li>Avoid very cheap hubs. Resets, glitches and power quirks look like "random" MIDI dropouts.</li>
+  <li>Only <strong>class-compliant</strong> USB MIDI devices work. A device that needs a vendor driver on Windows or macOS usually is not one.</li>
+</ul>
+
+<h3>Power and cooling</h3>
+<ul>
+  <li>Pi 4: the official 5.1 V / 3 A supply. Pi 5: the official 27 W supply. A weaker supply limits the USB current, and an "under-voltage" warning is the first thing to rule out when devices disconnect.</li>
+  <li>A Pi 4 or 5 in a closed box next to synths should be cooled; the System tab shows the CPU temperature.</li>
+</ul>
+<div class="box"><strong class="t">WiFi, Bluetooth and timing</strong>
+<p>On 2.4 GHz the Pi's WiFi and Bluetooth share one antenna and disturb each other: use 5 GHz WiFi, or Ethernet. For tight timing, such as MIDI clock or fast live playing, use Ethernet: WiFi has no guarantees about delay and jitter. EMM turns WiFi power-save off, which removes tens of milliseconds of jitter.</p></div>
+</section>
+
+<!-- ============================ 3 INSTALL ============================ -->
+<section id="install">
+<h1>3. Getting EMM onto a Pi</h1>
+<p>There are two ways. Both give the same EMM, with the same web interface and the same <code>emm.txt</code>. (The technical documentation in the repository calls the installer route "A" and the appliance card "B".)</p>
+<table>
+  <tr><th></th><th>The appliance SD card</th><th>Raspberry Pi OS and the installer</th></tr>
+  <tr><td><strong>What you do</strong></td><td>Copy a set of files onto a FAT32 SD card</td><td>Flash Raspberry Pi OS Lite, run one command from your computer</td></tr>
+  <tr><td><strong>What you get</strong></td><td>A small "appliance" system that runs from memory, so the system itself is never written to. Only your settings are saved to the card: a power cut during a save at worst loses that save, and the card is checked and repaired at the next boot</td><td>A normal Debian system with EMM as a service; SSH, logs, <code>apt</code></td></tr>
+  <tr><td><strong>Needs</strong></td><td>A copy of the project and <code>image/build.sh</code>, which builds <code>emm-sdcard-&lt;version&gt;.zip</code> (needs Docker, 15–30 GB of disk and one to two hours per board; see <code>docs/SDCARD-IMAGE.md</code>)</td><td>A copy of the project, a computer with Go 1.22 or newer and <code>ssh</code>, and Raspberry Pi Imager</td></tr>
+</table>
+
+<h2>The appliance SD card</h2>
+<ol>
+  <li>Build or obtain <code>emm-sdcard-&lt;version&gt;.zip</code>. One zip works on the Pi 3 B/B+/A+, Zero 2 W, Pi 4/400 and Pi 5/500 families (compute modules: see section 2).</li>
+  <li><strong>Format the card as FAT32 with an MBR partition table.</strong> The Pi's bootloader reads FAT32 only, and many cards over 32 GB come formatted as exFAT. The system is a few tens of megabytes, so a small card or partition is plenty.
+    <pre><code># macOS (erases the whole card: check the disk number with  diskutil list  first)
+diskutil eraseDisk FAT32 EMM MBRFormat /dev/disk4
+
+# Linux (replace sdX; erases the card)
+sudo parted /dev/sdX --script mklabel msdos mkpart primary fat32 4MiB 100%
+sudo mkfs.vfat -F 32 -n EMM /dev/sdX1</code></pre>
+    On Windows the built-in formatter refuses FAT32 above 32 GB: use a card of 32 GB or less, or make a small partition with <code>diskpart</code> (check <code>list disk</code> first: <code>clean</code> erases the whole disk).
+    <pre><code>diskpart
+list disk
+select disk N
+clean
+convert mbr
+create partition primary size=4096
+format fs=fat32 quick label=EMM
+assign</code></pre></li>
+  <li>Unzip, and copy the <strong>contents</strong> of the <code>emm-sdcard-&lt;version&gt;</code> folder onto the card, so that <code>config.txt</code> is in the root of the card and not in a subfolder.</li>
+  <li>If you will use WiFi, copy <code>emm.txt.example</code> to <code>emm.txt</code> on the card and set at least <code>wifi_country</code> (section 4); the web interface has no field for it.</li>
+  <li>Put the card in the Pi, connect Ethernet (optional) and your powered USB hub, and power on.</li>
+</ol>
+<div class="box"><strong class="t">What the card keeps</strong>
+<p>The card holds your hand-written <code>emm.txt</code> and an <code>emm</code> folder that EMM creates: <code>state.json</code> (routing, presets, device names) and <code>system.json</code> (network, web password and SSH, which are secrets). Pulling the plug is safe except in the second or so after you press <em>Save</em> in the web interface; that save may be lost. This behaviour has not yet been tested on a real card.</p></div>
+<p><strong>Updating:</strong> copy the new files over the old ones on the card and <strong>keep</strong> <code>emm.txt</code> and the <code>emm</code> folder.</p>
+
+<h2>Raspberry Pi OS and the installer</h2>
+<ol>
+  <li>Flash <strong>Raspberry Pi OS Lite (64-bit)</strong>, Bookworm or Trixie, with Raspberry Pi Imager. In its settings turn on SSH, choose a user and password, and optionally set your WiFi and WiFi country. 32-bit images are not supported.</li>
+  <li>Boot the Pi on your network and check that <code>ssh pi@raspberrypi.local</code> works (with the user name you chose).</li>
+  <li>From a checkout of the project on your computer run
+    <pre><code>scripts/deploy.sh pi@raspberrypi.local</code></pre>
+    Add <code>--dry-run</code> first to see what it would do. It builds EMM for the Pi, copies it over and runs the installer there. The installer is safe to run again.</li>
+  <li>Open <strong>http://emm.local/</strong>. The installer renames a Pi that still has a default name to <code>emm</code>; if you chose another host name in Imager it keeps it, so use <code>http://&lt;that name&gt;.local/</code> (the installer prints the address at the end).</li>
+</ol>
+<p>The installer sets up the system packages EMM needs, the EMM service, and a few small system settings (WiFi power-save off, no USB autosuspend for MIDI devices). It never overwrites your <code>emm.txt</code> or saved settings. <strong>Updating:</strong> run <code>scripts/deploy.sh pi@&lt;the Pi's name&gt;.local</code> again; settings stay. <strong>Removing:</strong> <code>scripts/deploy.sh --uninstall pi@…</code> keeps your settings and WiFi profiles so the Pi stays reachable.</p>
+</section>
+
+<!-- ============================ 4 FIRST ============================ -->
+<section id="first">
+<h1>4. First start and network setup</h1>
+
+<h2>Ethernet, WiFi and the setup network</h2>
+<ul>
+  <li><strong>With Ethernet</strong> (and DHCP on your network): open <strong>http://emm.local/</strong>.</li>
+  <li><strong>With WiFi and nothing configured</strong>: EMM opens its own network, <strong>EMM-Setup-XXXX</strong>. It is open (no password) unless you set <code>ap_password</code> in <code>emm.txt</code>. Join it with a phone or laptop. A "sign in to network" page opens by itself; if it does not, go to <strong>http://emm.local/</strong> or <strong>http://10.42.0.1/</strong>. Choose your WiFi, enter its password, and EMM joins it. Your phone drops off the setup network at that moment: reconnect to your normal WiFi and open <strong>http://emm.local/</strong>.</li>
+  <li><strong>A Pi that is already online</strong> (set up with Raspberry Pi Imager or <code>nmtui</code>) keeps its connection. EMM adopts it and does not open the setup network. Open <code>http://&lt;the Pi's hostname&gt;.local/</code> (the name it already has, for example <code>http://raspberrypi.local/</code>; EMM only renames the machine if you set <code>hostname</code>).</li>
+  <li>If the saved WiFi cannot be joined within about 45 seconds at boot and Ethernet has no connection (wrong password, router gone), EMM opens the setup network again. While it is open it checks every 30 seconds whether Ethernet has come up.</li>
+</ul>
+<p><strong>Set the WiFi country</strong> (<code>wifi_country</code> in <code>emm.txt</code>, for example <code>DK</code>). In many regions WiFi stays off until it is set, and the 5 GHz channels you may use depend on it.</p>
+
+<h2>emm.txt</h2>
+<p>To start one, copy <code>emm.txt.example</code> to <code>emm.txt</code> and remove the <code>#</code> in front of the lines you want. It is a plain text file in the root of the card (<code>/boot/firmware/emm.txt</code> on Raspberry Pi OS) for settings you want fixed from the start: WiFi, hostname, passwords and so on. One <code>key = value</code> per line; a line starting with <code>#</code> is a comment. <strong>Keys in <code>emm.txt</code> override the web interface and are applied on every boot</strong>; leave a key out to manage it from the web page. The full list is in the reference (section 10). The file <code>emm.txt.example</code> on the card lists every key, commented out.</p>
+<pre><code>hostname      = studio
+wifi_country  = DK
+wifi_ssid     = MyNetwork
+wifi_password = "correct horse #1"
+web_password  = something-private</code></pre>
+
+<h2>Starting over</h2>
+<p>To get the setup network back, create an empty file called <code>reset-network</code> next to <code>emm.txt</code> and reboot; EMM deletes it again, and leaves setup mode within about 30 seconds of an Ethernet cable being plugged in. To clear the routing, presets and device names, delete <code>emm/state.json</code> and any <code>emm/state.json.new</code> or <code>.old</code> next to it; to clear the network, web password and SSH settings, do the same for <code>emm/system.json</code>; then reboot. (On Raspberry Pi OS these files are in <code>/var/lib/emm/</code>; <code>sudo rm /var/lib/emm/state.json*</code> removes them.) A power cut can leave a <code>.new</code> or <code>.old</code> copy, and EMM would bring back the newest complete one.</p>
+<p><strong>Nothing here removes what you wrote in <code>emm.txt</code>.</strong> Its WiFi, hostname and Ethernet lines win over the web interface at every boot. To change those, edit or remove the lines in <code>emm.txt</code> (card in a computer).</p>
+</section>
+
+<!-- ============================ 5 UI ============================ -->
+<section id="ui">
+<h1>5. The web interface</h1>
+<p>Open <strong>http://emm.local/</strong> in any browser on the same network. The page has five tabs. The green "live" mark at the top right means the page is receiving updates from the device. The screenshots in this manual were taken with simulated devices.</p>
+
+<h2>Matrix</h2>
+<p>The matrix is the heart of EMM. <strong>Rows are sources</strong> (where MIDI comes from), <strong>columns are destinations</strong> (where it goes). Click a cell to connect or disconnect; a filled circle means connected. Where a row and a column are the same port the cell is hatched with a dash: a port cannot feed itself. Several sources can feed one destination, and one source can feed several.</p>
+<figure>
+  <img src="img/matrix.png" alt="The matrix tab with four simulated devices and three connections">
+  <figcaption>The Matrix tab. The keyboard feeds the sampler and (filtered) the synth; the drum machine feeds the sampler. The network ports are folded into the group at the bottom of the grid (its seven links are the automatic ones described below). Under the matrix: the legend and the note about network MIDI.</figcaption>
+</figure>
+<ul>
+  <li><strong>Legend.</strong> Connected; <em>Filtered</em> (the connection changes or drops some messages); <em>Waiting for device</em> (the connection is remembered, but the device is not plugged in); <em>Not connected</em>.</li>
+  <li><strong>The small dots</strong> flash when MIDI arrives or leaves. The dot left of a source name flashes when that port receives MIDI from its device (even if nothing is routed from it); the dot under a destination's name flashes when MIDI is sent out to it, after the connection's filter.</li>
+  <li><strong>Network ports</strong> (the RTP-MIDI ports and the Bluetooth MIDI port) are folded into one group at the bottom. Click it to open the group. Each USB port with its <em>Network port</em> switch on is linked automatically, in both directions, to its own network port; these links count in the group's "links". They are ordinary connections: you can filter or delete them, and a preset recall that lacks them removes them. Switching the Network port off and on again restores them.</li>
+  <li><strong>On a phone</strong> the matrix turns into a list: pick a destination, then switch on the sources that should feed it.</li>
+  <li>The keyboard works too: arrow keys move, <kbd>Space</kbd> or <kbd>Enter</kbd> toggles, <kbd>F</kbd> opens the filter.</li>
+</ul>
+
+<h3>Filters</h3>
+<p>Right-click a connected cell (or select it and press <kbd>F</kbd>) to adjust that one connection. On a touch screen, press and hold the cell, or tap the small sliders button that appears on a connected cell (or beside a switched-on source in the phone list). Changes take effect immediately; there is no Save button. Close the editor with the <em>×</em>, <kbd>Esc</kbd> or by clicking outside it.</p>
+<figure class="small">
+  <img src="img/filter-editor.png" alt="The filter editor for the connection from Sim Keyboard to Sim Synth, with the clock message type switched off and the transpose set to 12">
+  <figcaption>The filter editor. Here MIDI clock is blocked and notes are moved up one octave.</figcaption>
+</figure>
+<ul>
+  <li><strong>Message types.</strong> Switch off the kinds of message that should <em>not</em> pass: notes, polyphonic or channel aftertouch, control change, program change, pitch bend, SysEx, clock, start/stop, active sensing, system reset, system common, other. A new connection passes everything except active sensing.</li>
+  <li><strong>Channels.</strong> All 16 are on by default; switch off the channels that should not pass. At least one must stay on (to silence a connection, switch off message types instead). <em>All channels</em> turns them all back on.</li>
+  <li><strong>Force channel.</strong> Puts every channel message onto one channel.</li>
+  <li><strong>Transpose.</strong> Shifts notes by up to 48 semitones either way. A note that would land outside the MIDI range (0 to 127) is dropped.</li>
+  <li><strong>Reset</strong> returns to the defaults; <strong>Disconnect</strong> removes the connection.</li>
+</ul>
+
+<h3>Presets</h3>
+<p>The <em>Presets</em> button above the matrix saves the <strong>whole routing</strong>, every connection with its filters, under a name, and brings it back later with <em>Recall</em>.</p>
+<figure class="small">
+  <img src="img/presets.png" alt="The presets menu with one saved preset and a field to save the current routing under a new name">
+  <figcaption>The presets menu.</figcaption>
+</figure>
+<p>Recalling a preset <strong>replaces</strong> the current routing. Device names, hidden ports and network switches are not part of a preset. If a preset names a device this unit has forgotten, that connection is skipped and the page tells you. Each preset also has <em>Rename</em> and <em>Delete</em> buttons. You can keep up to 50 presets, with names of up to 40 characters that differ from each other (capitals do not count); saving under an existing name asks before replacing it.</p>
+
+<div class="box warn"><strong class="t">Network MIDI has limits</strong>
+<p>Below the matrix the page says: <em>Network MIDI (RTP-MIDI) has limited speed and reliability. It is fine for playing music and for loading a patch now and then, but do not rely on it for backing up or restoring a device, or for firmware updates. Use a USB cable for those.</em> See section 6.</p></div>
+
+<h2>Devices</h2>
+<p>One card per USB device, listing its ports. A device that has several MIDI cables shows several ports.</p>
+<figure>
+  <img src="img/devices.png" alt="The devices tab: a card for each simulated device with a network port switch, hide switch, test note and panic buttons">
+  <figcaption>The Devices tab. The Bluetooth message on this development machine does not appear on a Pi, where the card shows whether Bluetooth is advertising and how many centrals are connected.</figcaption>
+</figure>
+<ul>
+  <li><strong>Rename</strong> a port with the pencil (up to 60 characters). The name is used throughout the interface and, for a USB device's network port, it is also the session name a computer sees, so you may have to reconnect from the computer.</li>
+  <li><strong>Network port</strong> decides whether the device is also shown on the network as a MIDI device of its own. Switching it off removes its network connections.</li>
+  <li><strong>Hide in matrix</strong> takes a port out of the matrix without forgetting it.</li>
+  <li><strong>Test note</strong> (on devices that can receive MIDI) plays middle C on channel 1 for a third of a second, so you can hear that the cable works and, if the device listens on channel 1, that it answers.</li>
+  <li><strong>Panic</strong> sends "all sound off", "all notes off" and "sustain pedal up" on every channel, for a stuck note. Devices that only send MIDI, such as a keyboard, have neither button.</li>
+  <li><strong>Forget</strong> appears on a device that is not plugged in. It deletes its connections, name and settings. <em>Forget all</em> clears every unplugged device. A device you plug in again afterwards starts over as a new device.</li>
+  <li>The <strong>Network ports</strong> and <strong>Bluetooth</strong> cards show the network MIDI endpoints (with their UDP ports and connected peers) and the Bluetooth MIDI port. <em>Add a network port</em> creates an extra, standalone network MIDI port with a name you choose, for example a bus: connect your computer to it once, then route it to several devices in the matrix. <em>Remove</em> deletes such a port and its connections. The network ports of USB devices are controlled by the device's <em>Network port</em> switch.</li>
+</ul>
+
+<h2>Monitor</h2>
+<p>A live list of the MIDI messages passing through from the moment you open the tab (the latest 500 rows), with time, direction, port, a readable description and the raw bytes. <strong>rx</strong> is what a port received from its device, <strong>tx</strong> is what was sent out to it (with the source after the arrow).</p>
+<figure>
+  <img src="img/monitor.png" alt="The monitor tab listing note and control change messages">
+  <figcaption>The Monitor tab.</figcaption>
+</figure>
+<ul>
+  <li>The <strong>Port</strong> menu filters to one port: that port's rx and tx rows, plus the tx rows that came from it. Each entry ends with its type, for example <em>(USB)</em> or <em>(RTP-MIDI)</em>, because a device's USB port and its network port have the same name.</li>
+  <li><strong>Direction</strong> shows rx, tx or both. <strong>Pause</strong> freezes the list; <strong>Clear</strong> empties it.</li>
+  <li>When you scroll up, auto-scrolling stops; <em>Jump to live</em> brings it back.</li>
+</ul>
+
+<h2>Network</h2>
+<figure>
+  <img src="img/network.png" alt="The network tab: status card with hostname, WiFi list with the connected network highlighted, and Ethernet settings">
+  <figcaption>The Network tab.</figcaption>
+</figure>
+<ul>
+  <li><strong>Status</strong> shows the WiFi network, the addresses, whether an Ethernet cable is connected, and the name the device answers to. Change the <strong>hostname</strong> here (letters, digits and hyphens; the device is then <code>name.local</code>).</li>
+  <li><strong>WiFi</strong> lists the networks in range with their signal strength. The one you are on is marked <em>connected</em>. Click a network to join it (it asks for the password). <em>Rescan</em> refreshes the list; <em>Join a hidden network</em> takes a name you type. <em>Forget</em> removes a network saved through EMM; if Ethernet is not connected the device then returns to the setup network and this page stops answering. A connection that was set up outside EMM has no Forget button.</li>
+  <li><strong>Ethernet</strong>: Automatic, DHCP, a static address (with gateway and DNS), or disabled.</li>
+  <li>Anything fixed in <code>emm.txt</code> is shown as locked with an <em>emm.txt</em> mark, because the file wins at every boot.</li>
+</ul>
+<div class="box"><p>While the device is in setup mode, a rescan switches the setup network off for a few seconds. Your phone may lose its connection to it and should reconnect by itself.</p></div>
+
+<h2>System</h2>
+<figure class="narrow">
+  <img src="img/system.png" alt="The system tab with the settings card and the backup card">
+  <figcaption>The System tab (settings and backup). The Bluetooth message comes from the development machine used for the screenshot.</figcaption>
+</figure>
+<ul>
+  <li><strong>This device</strong>: model, uptime, how many USB devices, CPU temperature, and whether the settings storage is writable. If it says the storage is read-only or unreadable, changes will not survive a restart.</li>
+  <li><strong>Settings</strong>: switch network MIDI (RTP-MIDI) and Bluetooth MIDI on or off; set the Bluetooth name (up to 20 characters); set a <strong>web interface password</strong> (at least 4 characters; <em>Remove</em> clears it, but not while SSH is on). Settings fixed in <code>emm.txt</code> are shown locked.</li>
+  <li><strong>SSH access</strong> (appliance card only). Off by default, and nothing listens on port 22 while it is off. Set a web password first (SSH is a root shell, so the switch stays locked until you do), then give SSH a password of 8 or more characters and/or paste public keys, and switch it on: <code>ssh root@emm.local</code> (the card shows the exact command, with your hostname). It stays on across reboots until you switch it off. On Raspberry Pi OS use the system's own <code>sshd</code> instead.</li>
+  <li><strong>Backup</strong>: see section 7.</li>
+  <li><strong>Power</strong> (shown on the appliance card and where the installer allowed it): reboot or shut down.</li>
+</ul>
+</section>
+
+<!-- ============================ 6 CONNECT ============================ -->
+<section id="connect">
+<h1>6. Connecting a computer, phone or tablet</h1>
+
+<h2>Network MIDI (RTP-MIDI)</h2>
+<p>Every USB device, and every network port you add, is announced on the network as an RTP-MIDI (AppleMIDI) session. Your computer sees the synths as MIDI devices without any cable. Discovery uses Bonjour/mDNS, the same mechanism as <code>emm.local</code>.</p>
+<table>
+  <tr><th style="width:22%">System</th><th>How</th></tr>
+  <tr><td><strong>macOS</strong></td><td>Open <em>Audio MIDI Setup</em>, then <em>Window → Show MIDI Studio</em>, and double-click <em>Network</em>. Make sure your own session (<em>Session 1</em>) is ticked <em>Enabled</em>. EMM's devices appear in the <em>Directory</em> list; select one and click <em>Connect</em>. The device then shows up as a MIDI port in your music software.</td></tr>
+  <tr><td><strong>Windows</strong></td><td>Windows has no built-in RTP-MIDI. Install Apple's Bonjour (it comes with iTunes or Bonjour Print Services) and an RTP-MIDI driver such as rtpMIDI, then connect to the EMM sessions there.</td></tr>
+  <tr><td><strong>Linux</strong></td><td>Use an RTP-MIDI client that supports AppleMIDI sessions, with <code>avahi</code> for discovery.</td></tr>
+  <tr><td><strong>iPhone, iPad</strong></td><td>Apps with network MIDI support list the sessions; see the app's own MIDI settings.</td></tr>
+</table>
+<p class="small"><strong>Not verified yet:</strong> EMM's RTP-MIDI and Bluetooth MIDI have so far been tested only against EMM's own test code, not against Apple's, Windows' or Linux network MIDI software, nor against macOS, iOS or Android Bluetooth MIDI. The steps above are what should work, not a promise. If a computer cannot see or connect to a session, try another client, or Ethernet instead of WiFi, and see Troubleshooting.</p>
+<p>A connection from the network behaves like any other port: in the matrix the network ports sit in their own group, so you can route a synth's output to a network port or the reverse, with filters.</p>
+
+<h2>Bluetooth MIDI</h2>
+<p>EMM appears as a Bluetooth LE MIDI device named <code>EMM</code> (or the name you chose); no PIN is needed. Connect from the MIDI application, not only from the system's Bluetooth list: on macOS <em>Audio MIDI Setup → Window → Show MIDI Studio → Bluetooth</em>; on iPhone and iPad in the Bluetooth MIDI settings inside apps such as GarageBand. Bluetooth MIDI has no cable numbers, so EMM shows it as one port pair, in the network group of the matrix. It suits notes and controllers. Keep the Bluetooth name short (about eight characters): a longer name may be cut in your device's list.</p>
+
+<h2>What network and Bluetooth MIDI are not for</h2>
+<div class="box warn"><strong class="t">Do not rely on network or Bluetooth MIDI for backups, restores or firmware updates</strong>
+<p>RTP-MIDI runs over UDP on a network that may drop or delay packets, and over WiFi it has no guarantee about delay and jitter. EMM does not implement the recovery journal of the RTP-MIDI standard (RFC 6295). When a packet is lost, or a session ends, EMM releases the notes that peer was holding so nothing sticks (a held sustain pedal is the exception: use <em>Panic</em> on the Devices tab), but a lost packet can cut a note the player is still holding. A SysEx message that loses a packet is discarded rather than forwarded, so a dump can arrive incomplete, with no error to tell you.</p>
+<p><strong>Good for:</strong> playing music, controlling a synth from a computer, and loading a patch now and then.</p>
+<p><strong>Not for:</strong> backing up or restoring a device, firmware updates, and anything where a single damaged message can do harm. A failed firmware update can leave a device unusable. For those, unplug the device from EMM's hub, connect it directly to your computer with a USB cable, and use the maker's own software. Bluetooth MIDI is for notes and controllers only; do not send SysEx dumps or samples over it.</p>
+<p>Ethernet or 5 GHz WiFi is less bad than 2.4 GHz WiFi for a one-off patch or sample, but it does not make backups, restores or firmware updates safe.</p></div>
+</section>
+
+<!-- ============================ 7 KEEP ============================ -->
+<section id="keep">
+<h1>7. Presets, backups and moving devices</h1>
+
+<h2>Presets</h2>
+<p>Presets are described in section 5. They are stored on the device and are part of a backup.</p>
+
+<h2>Backup and restore</h2>
+<p><strong>System tab → Backup.</strong> <em>Download backup</em> saves a file with your routing, presets, per-port names and settings, the list of devices EMM remembers, and the network MIDI and Bluetooth switches. <em>Restore from file…</em> puts a backup back after a confirmation, <strong>replacing</strong> the current routing, presets and names. A restore applies the connections like a preset recall: connections to devices that are in the backup but not plugged in are kept and show as <em>Waiting for device</em>; connections to a port the backup does not list, or that no longer has that direction, are skipped and reported.</p>
+<div class="box"><strong class="t">What a backup does not contain</strong>
+<p>The <strong>network setup (WiFi password), the web interface password and the SSH settings are not in a backup, and a restore never changes them</strong>, not even from a hand-edited file. They are the device's own and are kept in a separate file, <code>system.json</code>. A backup file can therefore be shared or stored without exposing them.</p></div>
+<p><strong>Setting up a fresh card.</strong> Put the WiFi, hostname and web password in <code>emm.txt</code> before the first start, or copy <code>system.json</code> from another unit's card into an <code>emm</code> folder on the new card (create the folder; on Raspberry Pi OS it is <code>/var/lib/emm/system.json</code>). SSH is switched on in the web page; to keep its host key, so the fingerprint does not change, copy the <code>emm/ssh</code> folder as well. Then restore your backup from the System tab. A copied <code>system.json</code> includes the hostname, so do not run the old and the new unit on one network with the same name.</p>
+<p>This backup is for EMM's own settings. It is <strong>not</strong> a backup of the synths: for those, use each device's own software with the device connected directly to your computer by USB (see section 6).</p>
+
+<h2>Moving a device to another hub port</h2>
+<p>A USB device that reports no serial number is told apart by the hub port it sits in. When you move one to another port, EMM carries its connections, name and network port over to the new port, as long as that is unambiguous: exactly one device of that model is attached, and exactly one is remembered as absent. With two identical devices EMM cannot tell them apart, so give each its own port and leave it there. Devices that do report a serial number are recognised wherever you plug them.</p>
+</section>
+
+<!-- ============================ 8 SECURITY ============================ -->
+<section id="security">
+<h1>8. Security</h1>
+<p>EMM is made for a trusted home or studio network. Read this before putting it on a shared one.</p>
+<ul>
+  <li><strong>The web interface has no password by default.</strong> Anyone on the network can reroute MIDI and send SysEx to your synths. Set a password in the System tab or with <code>web_password</code> in <code>emm.txt</code>. It uses HTTP Basic authentication, so it is only worthwhile on a trusted network.</li>
+  <li><strong>RTP-MIDI has no authentication at all.</strong> Anyone on the network can connect to a network MIDI port and send SysEx to the synth behind it.</li>
+  <li><strong>SSH</strong> (appliance card) is a root shell. It is off at every boot unless you saved it on, and it cannot be switched on until the web interface has a password.</li>
+  <li><strong>Bluetooth MIDI has no authentication either:</strong> anyone within radio range can connect and send MIDI, including SysEx. Switch it off (System tab, or <code>ble = off</code>) if that matters.</li>
+  <li>The <strong>setup network is open</strong> unless <code>ap_password</code> is set; the home WiFi password you type there crosses the air once. While it is up, anyone who joins it can change the WiFi settings, even if a web password is set. Set <code>ap_password</code> if that matters.</li>
+  <li><strong>The WiFi password is stored in clear text</strong> in <code>system.json</code> and <code>emm.txt</code> on the card. Treat the SD card like the password it contains.</li>
+  <li>The server rejects requests for unknown host names (protection against DNS rebinding) and state-changing requests from other web sites. If you reach the device through a name of your own, add it with <code>allowed_hosts</code>.</li>
+</ul>
+</section>
+
+<!-- ============================ 9 TROUBLE ============================ -->
+<section id="trouble">
+<h1>9. Troubleshooting</h1>
+
+<h3>emm.local does not open</h3>
+<p>It relies on mDNS. macOS, iOS and Linux (with <code>avahi</code>) resolve it; Windows 10/11 usually does. On a VPN or managed network, or on Android, use the IP address: look for <code>emm</code> in your router's client list, or <code>ping emm.local</code> from a computer where it works.</p>
+
+<h3>No WiFi at all, or the setup network never appears</h3>
+<p>Set <code>wifi_country</code> in <code>emm.txt</code>. EMM does not open the setup network while Ethernet has a working connection. On Raspberry Pi OS check the service with <code>systemctl status emmd</code> and <code>journalctl -u emmd -b</code>.</p>
+
+<h3>The setup page does not pop up on my phone</h3>
+<p>Open <code>http://emm.local/</code> or <code>http://10.42.0.1/</code> by hand. Turn off a VPN, and "private DNS" on Android.</p>
+
+<h3>A USB MIDI device does not show up</h3>
+<ul>
+  <li>Use a <strong>powered</strong> hub and the Pi's proper power supply. An under-voltage warning is the first thing to rule out.</li>
+  <li>Only <strong>class-compliant</strong> devices work.</li>
+  <li>On boards where a port can also act as a USB device (Zero, 3, CM4) make sure no gadget setup (<code>dtoverlay=dwc2</code>, <code>g_ether</code>) is active.</li>
+  <li>On Raspberry Pi OS, <code>sudo emmd --list-devices</code> shows what was detected. On the appliance card the matrix shows what was found, and a monitor on the HDMI port shows the boot messages.</li>
+</ul>
+
+<h3>Bluetooth MIDI will not pair</h3>
+<p>Connect from the MIDI application, not only from the system Bluetooth list (section 6). Windows and Android need an app that supports Bluetooth LE MIDI. On 2.4 GHz, WiFi and Bluetooth share the radio: use 5 GHz WiFi or Ethernet if connections are unstable.</p>
+
+<h3>Transfers are slow or stall</h3>
+<p>Use Ethernet or 5 GHz WiFi, and a USB cable for anything large. RTP-MIDI over WiFi was not built for bulk data; the USB side is not the bottleneck.</p>
+
+<h3>The page says the settings storage is read-only or unreadable</h3>
+<p>Changes will not survive a restart. On the appliance card check that the SD card is not write-protected or worn out. A file that cannot be read is left untouched rather than overwritten, so a flaky card cannot wipe your settings.</p>
+
+<h3>I forgot the web password</h3>
+<p>Switch the Pi off and put the card in a computer. Either add <code>web_password = something-new</code> to <code>emm.txt</code> (it is used instead of the saved one), or delete <code>emm/system.json</code> and any <code>system.json.new</code> and <code>.old</code> next to it (this also clears the network and SSH settings, which you then set up again). Put the card back and power on, then set a new password in the System tab and remove the line from <code>emm.txt</code> if you want to manage it there.</p>
+</section>
+
+<!-- ============================ 10 REF ============================ -->
+<section id="ref">
+<h1>10. Reference</h1>
+
+<h2>emm.txt keys</h2>
+<p>One <code>key = value</code> per line. Quote a value (<code>"…"</code> or <code>'…'</code>) if it contains <code> #</code> or starts or ends with a space; inside quotes everything is literal. A line EMM cannot use is ignored and the reason goes to its log.</p>
+<table>
+  <tr><th style="width:22%">Key</th><th style="width:30%">Values</th><th>Meaning</th></tr>
+  <tr><td><code>hostname</code></td><td>letters, digits, <code>-</code>; up to 63 characters. Default <code>emm</code></td><td>Reachable as <code>&lt;hostname&gt;.local</code></td></tr>
+  <tr><td><code>wifi_country</code></td><td>two letters, e.g. <code>DK</code></td><td>WiFi regulatory country; WiFi stays off in many regions until it is set</td></tr>
+  <tr><td><code>wifi_ssid</code>, <code>wifi_password</code></td><td>name up to 32 bytes; password 8–63 characters or 64 hex digits</td><td>WiFi network to join. An empty password means an open network. A password of the wrong length is tried anyway and the join fails</td></tr>
+  <tr><td><code>ethernet</code></td><td><code>auto</code>, <code>dhcp</code>, <code>static</code>, <code>off</code></td><td>Wired network mode. Default <code>auto</code></td></tr>
+  <tr><td><code>eth_address</code>, <code>eth_gateway</code>, <code>eth_dns</code></td><td><code>192.168.1.50/24</code>; an address; one or more addresses</td><td>Used only with <code>ethernet = static</code></td></tr>
+  <tr><td><code>ap_ssid</code>, <code>ap_password</code></td><td>name up to 32 bytes; password 8–63 characters or 64 hex digits</td><td>The setup network. Default <code>EMM-Setup-XXXX</code>, no password. A password of the wrong length is ignored and the setup network is then <strong>open</strong></td></tr>
+  <tr><td><code>rtp</code></td><td><code>on</code> / <code>off</code></td><td>Network MIDI. Default on</td></tr>
+  <tr><td><code>ble</code>, <code>ble_name</code></td><td><code>on</code> / <code>off</code>; text</td><td>Bluetooth MIDI and the name shown when pairing. Default on, <code>EMM</code></td></tr>
+  <tr><td><code>web_password</code></td><td>text</td><td>Password for the web interface; used instead of one saved from the web page</td></tr>
+  <tr><td><code>allowed_hosts</code></td><td>names separated by commas, spaces or semicolons; a leading dot allows a whole domain</td><td>Extra names the web interface accepts, for example a name your router gives the Pi</td></tr>
+</table>
+<p class="small">Passwords in this file are stored as plain text.</p>
+
+<h2>Files on the card</h2>
+<table>
+  <tr><th style="width:34%">File</th><th>What</th></tr>
+  <tr><td><code>emm.txt</code></td><td>Your hand-written settings (optional). Never overwritten by EMM or an update</td></tr>
+  <tr><td><code>reset-network</code></td><td>Create it empty to get the setup network on the next boot; EMM deletes it</td></tr>
+  <tr><td><code>emm/state.json</code></td><td>Routing, presets, device names, the RTP and Bluetooth switches (created by EMM)</td></tr>
+  <tr><td><code>emm/system.json</code></td><td>Network (including the WiFi password), web password hash and SSH settings (created by EMM). Secret: not part of a backup</td></tr>
+  <tr><td><code>emm/ssh/</code></td><td>The SSH host key, so the fingerprint survives reboots (appliance card)</td></tr>
+  <tr><td><code>*.new</code>, <code>*.old</code></td><td>Leftovers of an interrupted save. EMM settles them at the next start (and keeps the newest complete copy)</td></tr>
+  <tr><td><code>*.corrupt-…</code></td><td>A damaged file that EMM set aside. It stays until you delete it, and may contain your WiFi password</td></tr>
+</table>
+<div class="box"><p>EMM saves its files so that a power cut at any moment leaves a complete copy: it writes a new, checksummed file first, swaps it in, and at the next start picks the newest complete copy. A damaged file is kept next to the new one, never silently deleted.</p></div>
+
+<h2>Limits and what is not included</h2>
+<ul>
+  <li>MIDI 1.0 only: USB MIDI 2.0 / UMP devices are not handled (their legacy endpoints work).</li>
+  <li>No 5-pin DIN MIDI ports. A USB MIDI interface with DIN connectors is the practical answer.</li>
+  <li>No RTP-MIDI recovery journal (see section 6).</li>
+  <li>No encryption of the stored WiFi password; no authentication on RTP-MIDI.</li>
+</ul>
+<div class="box"><strong class="t">Status</strong>
+<p>EMM is new. Most of it is covered by automated tests on a development machine with simulated devices. It has run on real Raspberry Pi hardware with real USB synths, and the appliance card has been started on a Raspberry Pi 3 B+ and a Pi 4 (a WiFi join problem found there is fixed in the card's kernel, not yet tested on a Pi). <strong>Not verified yet:</strong> the Pi 5, 500 and compute-module builds, the Bluetooth MIDI server, the SSH switch, saving behaviour on a real card after a power cut, and compatibility with other makers' RTP-MIDI and Bluetooth MIDI software. Expect rough edges, and use <code>emmd --log-level debug</code> when something does not behave.</p></div>
+
+<h2>Words used in this manual</h2>
+<table>
+  <tr><th style="width:22%">Word</th><th>Meaning</th></tr>
+  <tr><td>Appliance card</td><td>The ready-to-run SD card made by the project: a small system that runs from memory</td></tr>
+  <tr><td>DHCP</td><td>Your router hands out the device's network address automatically</td></tr>
+  <tr><td>FAT32, MBR</td><td>The disk format and partition table the Pi's bootloader can read</td></tr>
+  <tr><td>mDNS, Bonjour, avahi</td><td>How computers find <code>emm.local</code> and network MIDI sessions without you typing an address</td></tr>
+  <tr><td>OTG</td><td>A USB port that can act as host or as device (Pi Zero 2 W, compute modules)</td></tr>
+  <tr><td>RTP-MIDI, AppleMIDI</td><td>MIDI over a network, also called network MIDI</td></tr>
+  <tr><td>SysEx</td><td>System exclusive: long MIDI messages used for patch dumps, backups and firmware</td></tr>
+  <tr><td>UMP</td><td>Universal MIDI Packet, the format of USB MIDI 2.0</td></tr>
+</table>
+</section>
+
+</body>
+</html>

@@ -18,6 +18,10 @@ A Raspberry Pi appliance that turns a USB hub full of synths into one patchbay:
   [docs/SDCARD-IMAGE.md](docs/SDCARD-IMAGE.md)) or run the installer on
   Raspberry Pi OS Lite (see [docs/INSTALL.md](docs/INSTALL.md)).
 
+**New here?** The [user manual (PDF)](docs/EMM-manual.pdf) walks through setup, the
+web interface, connecting a computer or phone, backups and troubleshooting. (Its
+source and a script to rebuild it are in [docs/manual/](docs/manual/).)
+
 One Go daemon, `emmd`, does all of it. No cgo, no libasound: it reads and writes
 ALSA raw MIDI nodes directly so SysEx back-pressure is real (the ALSA sequencer
 silently drops data when a device is slower than its source — see

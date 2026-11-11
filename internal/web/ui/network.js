@@ -99,6 +99,8 @@ export function mount(root) {
   let networks = (data && data.networks) || [];
   let stale = false;
   let scanning = false;
+  let listLoading = false;   // the first, quiet scan that fills the list when the device has none yet
+  let autoScanned = false;
   let scanWarn = false;      // a forced scan in setup mode: the setup network is down for a few seconds
   let joiningSsid = '';      // a join request is in flight (they can take up to a minute)
   let forgetting = false;
@@ -123,6 +125,25 @@ export function mount(root) {
     }
     render({ force });
     schedulePoll();
+    autoScan();
+  }
+  // The daemon only has a list of networks after somebody scanned (it scans by itself
+  // just before it starts the setup network). Connected the normal way it has none, so the
+  // WiFi card used to say "No networks found" until Rescan was pressed. Ask for the list
+  // once, without forcing: NetworkManager answers from its cache, or rescans if that is
+  // old, and the setup network is never touched.
+  async function autoScan() {
+    const st = (data && data.status) || {};
+    if (autoScanned || scanning || !alive || networks.length || st.setup_mode || st.mode === 'ap') return;
+    autoScanned = true;
+    listLoading = true;
+    render();
+    try {
+      const r = await post('/api/network/scan', undefined, { timeout: SCAN_TIMEOUT });
+      if (alive && !networks.length) { networks = (r && r.networks) || []; stale = !!(r && r.stale); }
+    } catch (e) { /* no WiFi adapter, or the scan failed: Rescan is still there */ }
+    listLoading = false;
+    if (alive) render();
   }
   function schedulePoll() {
     clearTimeout(pollTimer);
@@ -219,13 +240,18 @@ export function mount(root) {
     // The scan list can predate the connection, so also match on the live SSID.
     const list = networks.map((n) => ({ ...n, in_use: !!n.in_use || (st.mode === 'client' && !!st.ssid && n.ssid === st.ssid) }))
       .sort((a, b) => (b.in_use - a.in_use) || (b.signal - a.signal));
+    // The network the device is on is known from the status even before any scan: show it
+    // at once. Its signal and security are not known then, so it cannot be joined from here.
+    if (st.mode === 'client' && st.ssid && !list.some((n) => n.ssid === st.ssid)) {
+      list.unshift({ ssid: st.ssid, signal: 0, security: '', in_use: true, fromStatus: true });
+    }
     const items = list.map((n) => h('li', {},
-      h('button', { type: 'button', class: 'net-item' + (n.in_use ? ' in-use' : ''), disabled: noJoin, dataset: { fk: 'net:' + (n.ssid || '') }, onclick: () => joinDialog(n) },
+      h('button', { type: 'button', class: 'net-item' + (n.in_use ? ' in-use' : ''), disabled: noJoin || !!n.fromStatus, dataset: { fk: 'net:' + (n.ssid || '') }, onclick: () => joinDialog(n) },
         signalBars(n.signal),
         h('span', { class: 'net-name' }, n.ssid || '(hidden network)'),
         n.ssid && n.ssid === saved ? badge('saved') : null,
         n.in_use ? badge('connected', 'ok') : null,
-        h('span', { class: 'net-sec muted small' }, isOpenNet(n) ? 'open' : n.security, isOpenNet(n) ? null : [' ', icon('lock', 12)]))));
+        n.fromStatus ? null : h('span', { class: 'net-sec muted small' }, isOpenNet(n) ? 'open' : n.security, isOpenNet(n) ? null : [' ', icon('lock', 12)]))));
     return h('article', { class: 'card' },
       h('header', { class: 'card-head' }, h('h3', {}, icon('wifi', 16), ' WiFi ', managedBadge('wifi')),
         h('div', { class: 'btn-row' },
@@ -240,7 +266,8 @@ export function mount(root) {
       stale || (st.scan_age > 120 && st.mode === 'ap')
         ? notice('info', icon('alert', 16), h('span', {}, 'This list was captured before the setup network started, so it may be out of date. A rescan briefly interrupts the setup network.'))
         : null,
-      items.length ? h('ul', { class: 'nets' }, items) : h('p', { class: 'muted' }, scanning ? 'Scanning…' : 'No networks found. Try Rescan.'),
+      items.length ? h('ul', { class: 'nets' }, items) : h('p', { class: 'muted' }, scanning || listLoading ? 'Scanning…' : 'No networks found. Try Rescan.'),
+      listLoading && items.length ? h('p', { class: 'muted small', role: 'status' }, spinner(), ' Looking for other networks…') : null,
       h('div', { class: 'btn-row row-gap' },
         h('button', { type: 'button', class: 'btn', disabled: noJoin, dataset: { fk: 'join-hidden' }, onclick: () => joinDialog(null) }, icon('plus', 14), 'Join a hidden network…'),
         saved ? h('button', { type: 'button', class: 'btn btn-danger', disabled: lockWifi, 'aria-disabled': forgetting || joiningSsid ? 'true' : null, dataset: { fk: 'forget' }, onclick: forget },

@@ -178,6 +178,71 @@ export function mount(root) {
       ssh.enabled ? h('p', { class: 'muted small' }, 'SSH stays on across reboots until you switch it off here. It is a full root shell: keep this device on a network you trust.') : null);
   }
 
+  // ---- backup and restore of the application state --------------------------
+  // The file holds the routing, presets and device names. The network setup, the web
+  // password and SSH are the device's own and are neither in it nor restored from it.
+  let restoreResult = null; // what the last restore did, shown until the tab is left
+  let restoring = false;
+  function backupCard() {
+    const picker = h('input', { id: 'restore-file', type: 'file', accept: '.json,application/json', hidden: true, 'aria-label': 'Backup file to restore', onchange: () => restoreFrom(picker) });
+    const r = restoreResult;
+    const skipped = r && Array.isArray(r.skipped) ? r.skipped : [];
+    const warnings = r && Array.isArray(r.warnings) ? r.warnings : [];
+    const unsaved = r && r.saved === false;
+    const why = [...new Set(skipped.map((x) => x.reason).filter(Boolean))].slice(0, 3);
+    const trouble = skipped.length || warnings.length || unsaved;
+    return h('article', { class: 'card' },
+      h('header', { class: 'card-head' }, h('h3', {}, icon('download', 16), ' Backup')),
+      h('p', { class: 'muted' }, 'Save your routing, presets and device names to a file, and bring them back later or on another unit. The network setup, web password and SSH settings are not in it and cannot be restored from it: set those up on the device, or put them on the card when you flash it.'),
+      h('div', { class: 'btn-row' },
+        h('a', { id: 'backup-download', class: 'btn', href: '/api/backup', download: true }, icon('download', 14), 'Download backup'),
+        h('button', { id: 'backup-restore', type: 'button', class: 'btn', disabled: restoring, onclick: () => picker.click() }, icon('upload', 14), restoring ? 'Restoring…' : 'Restore from file…'),
+        picker),
+      // role=status: a screen reader announces the result, not only the toast.
+      r ? h('div', { role: 'status' }, notice(trouble ? 'warn' : 'info', icon(trouble ? 'alert' : 'check', 16),
+        h('div', {},
+          h('div', {}, `Restored ${r.connections} connection${r.connections === 1 ? '' : 's'} and ${r.presets} preset${r.presets === 1 ? '' : 's'}.`),
+          skipped.length ? h('div', {}, `${skipped.length} connection${skipped.length === 1 ? ' was' : 's were'} left out${why.length ? ': ' + why.join('; ') : ''}.`) : null,
+          unsaved ? h('div', {}, `It could not be saved to the card, so it will be lost when the device restarts${r.save_error ? ' (' + r.save_error + ')' : ''}.`) : null,
+          warnings.map((w) => h('div', {}, w))))) : null);
+  }
+  function renderBackup() {
+    if (!alive) return;
+    const saved = captureFocus(backupSlot);
+    replace(backupSlot, backupCard());
+    restoreFocus(backupSlot, saved);
+  }
+  async function restoreFrom(picker) {
+    const f = picker.files && picker.files[0];
+    picker.value = ''; // so that the same file can be chosen again
+    if (!f || restoring) return;
+    if (f.size > 8 * 1024 * 1024) { toast('That file is too large to be an EMM backup.', 'error'); return; }
+    let doc;
+    try { doc = JSON.parse(await f.text()); } catch (e) { toast('That is not an EMM backup (not valid JSON).', 'error'); return; }
+    if (!doc || doc.format !== 'emm-backup') { toast('That is not an EMM backup.', 'error'); return; }
+    const st = doc.state || {};
+    const n = (a) => (Array.isArray(a) ? a.length : 0);
+    const when = doc.created ? new Date(doc.created).toLocaleString() : 'an unknown date';
+    const ok = await confirmDialog({
+      title: 'Restore this backup?',
+      body: `Backup from ${doc.host || 'a device'}, ${when}: ${n(st.connections)} connection${n(st.connections) === 1 ? '' : 's'}, ${n(st.presets)} preset${n(st.presets) === 1 ? '' : 's'}. It replaces your current routing, presets and device names. The network setup, web password and SSH settings are not touched.`,
+      confirmLabel: 'Restore', danger: true,
+    });
+    if (!ok) return;
+    restoreResult = null; // a failed restore must not sit next to the notice of an earlier one
+    restoring = true;
+    renderBackup();
+    try {
+      restoreResult = await post('/api/restore', doc);
+      if (restoreResult.saved === false) toast('Restored, but it could not be saved to the card', 'error');
+      else toast('Backup restored');
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+    restoring = false;
+    renderBackup();
+  }
+
   function powerCard() {
     if (!sys || !sys.allow_power) return null;
     const act = (label, path, ic, body, done) => h('button', { type: 'button', class: 'btn btn-danger', onclick: async () => {
@@ -197,8 +262,9 @@ export function mount(root) {
   const infoSlot = h('div');
   const settingsSlot = h('div');
   const sshSlot = h('div');
+  const backupSlot = h('div');
   const powerSlot = h('div');
-  host.append(h('div', { class: 'cards' }, infoSlot, settingsSlot, sshSlot, powerSlot));
+  host.append(h('div', { class: 'cards' }, infoSlot, settingsSlot, sshSlot, backupSlot, powerSlot));
 
   // The Power card only depends on allow_power, which does not change while the
   // daemon runs: build it once (or when that flips), not on every tick. Rebuilt
@@ -240,6 +306,7 @@ export function mount(root) {
   const offs = [on('settings', () => { loadSettings(); loadSsh({ force: false }); })];
   renderInfo();
   renderSettings();
+  renderBackup();
   loadSystem();
   loadSettings();
   loadSsh();

@@ -134,6 +134,9 @@ type Server struct {
 
 	startOnce sync.Once
 
+	// applyMu serialises what replaces the whole routing: a restore and a preset recall.
+	applyMu sync.Mutex
+
 	// testHookInitialState, when set, runs in handleEvents after the first
 	// topology snapshot is taken and before it is sent (tests use it to change
 	// a port's counters inside that window).
@@ -238,6 +241,9 @@ func (s *Server) routes() {
 	m.HandleFunc("DELETE /api/network/wifi", s.handleNetworkForget)
 	m.HandleFunc("PUT /api/network/ethernet", s.handleNetworkEthernet)
 	m.HandleFunc("PUT /api/network/hostname", s.handleNetworkHostname)
+
+	m.HandleFunc("GET /api/backup", s.handleBackup)
+	m.HandleFunc("POST /api/restore", s.handleRestore)
 
 	m.HandleFunc("GET /api/ssh", s.handleSSHGet)
 	m.HandleFunc("PUT /api/ssh", s.handleSSHPut)

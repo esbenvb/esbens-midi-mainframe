@@ -109,7 +109,7 @@ can never include them. Each file is written only when its own part changed. A
 `state.json` from before the split is migrated at first start (secrets to
 `system.json` first).
 
-The file is written rarely, and so that a power cut at any moment leaves a usable
+The files are written rarely, and so that a power cut at any moment leaves a usable
 state. FAT32 cannot replace a file by rename in one crash-safe step, so a save
 never replaces anything: it writes `state.json.new` (sealed with a sequence number
 and a checksum, so that a half-written or stale file is recognised) and syncs it,
@@ -117,12 +117,14 @@ moves `state.json` aside to `state.json.old`, renames `.new` into place and remo
 `.old`. `Open`, and every save before it writes, settle the card first: of `.new`,
 `state.json` and `.old` the newest complete copy becomes `state.json`. A `state.json`
 that is corrupt and has no good copy beside it is moved aside
-(`state.json.corrupt-<time>`) and the daemon starts empty. A `state.json` that
-cannot be *read* (I/O error, permissions) is left untouched: the daemon starts
-with empty in-memory state, refuses to write until it is restarted, and the UI
-shows its "read-only or unreadable" banner, so a flaky card cannot silently wipe
-the saved settings. (While that state lasts the saved web password is not known,
-so the web interface is open.)
+(`state.json.corrupt-<time>`) and the daemon starts empty. A file (`state.json` or
+`system.json`) that cannot be *read* (I/O error, permissions) is left untouched: the
+daemon starts with that part empty in memory (or on the copy a power cut left beside
+it), never writes that file until it is restarted, and the UI shows its "read-only
+or unreadable" banner, so a flaky card cannot silently wipe the saved settings. While
+`system.json` is the unreadable one the saved web password is not known, so the web
+interface is open; if `state.json` from before the split is the unreadable one,
+`system.json` is not created either, since the secrets may still be inside it.
 
 ## HTTP API
 
@@ -142,6 +144,8 @@ All JSON. Errors are `{"error": "message"}` with a 4xx/5xx status.
 | `GET /api/presets` | saved routings: `[{id, name, saved, connections}]` |
 | `POST /api/presets` | body `{name, replace?}`; saves the current connections and filters under a name (409 if the name exists and `replace` is not true) |
 | `POST /api/presets/{id}/recall` | replaces the current connections with the preset's; `{name, applied, skipped:[{from,to,reason}]}`. Connections to devices this unit has never seen (or has forgotten) are skipped |
+| `GET /api/backup` | the application state as a download (`{format:"emm-backup", version, created, emmd, host, state}`): routing, presets, port settings, remembered ports, RTP/BLE switches; never the network, web password or SSH settings |
+| `POST /api/restore` | body is a backup file; replaces the application state (the network, web password and SSH are untouched, even if the file carries them), re-applies the connections like a preset recall, and answers `{connections, skipped, presets, warnings}` |
 | `PATCH /api/presets/{id}` / `DELETE /api/presets/{id}` | body `{name}` renames; delete |
 | `GET /api/rtp` | network endpoints: `[{id, name, control_port, peers, device}]` |
 | `POST /api/rtp/ports` | body `{name}` — add an extra virtual network port |

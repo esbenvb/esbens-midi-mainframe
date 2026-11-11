@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -157,10 +159,26 @@ func (s *Server) handlePresetRecall(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "no such preset")
 		return
 	}
+	s.applyMu.Lock()
+	applied, skipped := s.applyConnections(pr.Connections)
+	if s.d.Reconcile != nil {
+		s.d.Reconcile()
+	}
+	s.applyMu.Unlock()
+	s.NotifyTopology()
+	writeJSON(w, http.StatusOK, map[string]any{"name": pr.Name, "applied": applied, "skipped": skipped})
+}
+
+// applyConnections makes the router's connections exactly conns. A connection to
+// a device the unit has never seen is skipped (and reported); one to a known but
+// unplugged device goes dormant, as usual. What conns does not have is removed
+// first, so a destination never gets both the old and the new routing at once;
+// Disconnect releases held notes.
+func (s *Server) applyConnections(conns []router.ConnSpec) (applied int, skipped []skippedConn) {
+	skipped = []skippedConn{}
 	want := map[string]bool{}
 	var apply []router.ConnSpec
-	skipped := []skippedConn{}
-	for _, c := range pr.Connections {
+	for _, c := range conns {
 		if !validID(c.From) || !validID(c.To) {
 			continue
 		}
@@ -171,15 +189,23 @@ func (s *Server) handlePresetRecall(w http.ResponseWriter, r *http.Request) {
 		want[c.From+"\x00"+c.To] = true
 		apply = append(apply, c)
 	}
-	// Remove what the preset does not have first, so a destination never gets
-	// both the old and the new routing at once. Disconnect releases held notes.
+	have := map[string][]byte{} // current connections and their filters, to leave the unchanged ones alone
 	for _, c := range s.d.Router.Connections() {
 		if !want[c.From+"\x00"+c.To] {
 			_ = s.d.Router.Disconnect(c.From, c.To)
+		} else {
+			have[c.From+"\x00"+c.To], _ = json.Marshal(c.Filter)
 		}
 	}
-	applied := 0
 	for _, c := range apply {
+		// Every change is persisted as the whole list, so restoring a routing that
+		// is already there must not cost one save per connection.
+		if cur, ok := have[c.From+"\x00"+c.To]; ok {
+			if nf, _ := json.Marshal(c.Filter.Normalize()); bytes.Equal(cur, nf) {
+				applied++
+				continue
+			}
+		}
 		if err := s.d.Router.Connect(c.From, c.To, c.Filter); err != nil {
 			reason := err.Error()
 			if errors.Is(err, router.ErrNotInput) || errors.Is(err, router.ErrNotOutput) {
@@ -190,11 +216,7 @@ func (s *Server) handlePresetRecall(w http.ResponseWriter, r *http.Request) {
 		}
 		applied++
 	}
-	if s.d.Reconcile != nil {
-		s.d.Reconcile()
-	}
-	s.NotifyTopology()
-	writeJSON(w, http.StatusOK, map[string]any{"name": pr.Name, "applied": applied, "skipped": skipped})
+	return applied, skipped
 }
 
 // PATCH /api/presets/{id} {"name": "..."}: renames.

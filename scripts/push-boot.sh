@@ -3,6 +3,14 @@
 #
 #   scripts/push-boot.sh [--dry-run] [--reboot] [--dest DIR] [--ssh-opts "OPTS"] SOURCE root@host
 #   scripts/push-boot.sh [--dry-run] [--reboot] [--dest DIR] [--ssh-opts "OPTS"] --auto root@host
+#   scripts/push-boot.sh ... --auto|--board rpi4 --from FOLDER [--manifest-dir DIR] root@host
+#
+# --from FOLDER takes the files from FOLDER (an unpacked SD-card or update zip) instead of
+# the build output; --board rpiN names the board instead of asking the device. With
+# --manifest-dir DIR only the files listed in DIR/<board>.txt are sent (the update zip
+# uses this: one folder with every board's kernel, and each device gets only its own).
+# A config.txt or cmdline.txt that differs on the device is first copied to <name>.previous.
+# Files go in this order: firmware and device trees, rootfs, kernel, then config.txt and cmdline.txt.
 #
 # SOURCE is a folder (image/output/<board>/emm-payload-<board>, an unpacked SD-card
 # zip, ...) or just a board name (rpi3, rpi4, rpi5), which means the payload that
@@ -35,6 +43,9 @@ TARGET=""
 DEST=/boot
 REBOOT=0
 AUTO=0
+FROM=""
+BOARD_OPT=""
+MANIFEST_DIR=""
 SSH_OPTS=""
 
 while [ $# -gt 0 ]; do
@@ -42,6 +53,9 @@ while [ $# -gt 0 ]; do
     --dry-run)  DRY_RUN=1; shift ;;
     --reboot)   REBOOT=1; shift ;;
     --auto)     AUTO=1; shift ;;
+    --from)     FROM=${2:?--from needs a folder}; shift 2 ;;
+    --board)    BOARD_OPT=${2:?--board needs rpi3, rpi4 or rpi5}; shift 2 ;;
+    --manifest-dir) MANIFEST_DIR=${2:?--manifest-dir needs a folder}; shift 2 ;;
     --dest)     DEST=${2:?--dest needs a directory}; shift 2 ;;
     --ssh-opts) SSH_OPTS=${2:?--ssh-opts needs a value}; shift 2 ;;
     -h|--help)  print_usage_comment "$0"; exit 0 ;;
@@ -54,13 +68,21 @@ while [ $# -gt 0 ]; do
       shift ;;
   esac
 done
-if [ "$AUTO" = 1 ]; then
-  # The single argument is the device.
-  [ -z "$TARGET" ] || die "--auto picks the folder itself: give only the device, not '$SOURCE'"
+case "$BOARD_OPT" in ""|rpi3|rpi4|rpi5) ;; *) die "unknown board '$BOARD_OPT' (rpi3, rpi4, rpi5)" ;; esac
+[ "$AUTO" = 0 ] || [ -z "$BOARD_OPT" ] || die "give --auto or --board, not both"
+if [ "$AUTO" = 1 ] || [ -n "$BOARD_OPT" ]; then
+  # The board comes from --auto or --board, the folder from --from (or the build
+  # output): the single argument is the device.
+  [ -z "$TARGET" ] || die "--auto and --board pick the folder themselves: give only the device, not '$SOURCE' (use --from for a folder)"
   TARGET=$SOURCE
   SOURCE=""
+elif [ -n "$FROM" ]; then
+  die "--from goes with --auto or --board"
 fi
-if [ -z "$TARGET" ] || { [ "$AUTO" = 0 ] && [ -z "$SOURCE" ]; }; then
+if [ -n "$MANIFEST_DIR" ] && [ "$AUTO" = 0 ] && [ -z "$BOARD_OPT" ]; then
+  die "--manifest-dir needs --auto or --board, to know which board's list to use"
+fi
+if [ -z "$TARGET" ] || { [ "$AUTO" = 0 ] && [ -z "$BOARD_OPT" ] && [ -z "$SOURCE" ]; }; then
   print_usage_comment "$0" >&2
   exit 2
 fi
@@ -118,28 +140,61 @@ detect_board() {
   esac
 }
 
+BOARD=$BOARD_OPT
 if [ "$AUTO" = 1 ]; then
   connect
-  SOURCE=$(detect_board)
-  log "board: $SOURCE"
+  BOARD=$(detect_board)
+  log "board: $BOARD"
+elif [ -z "$BOARD" ]; then
+  case "$SOURCE" in rpi3|rpi4|rpi5) BOARD=$SOURCE; SOURCE="" ;; esac
 fi
 
-case "$SOURCE" in
-  rpi3|rpi4|rpi5)
-    BOARD=$SOURCE
-    SOURCE=$ROOT/image/output/$BOARD/emm-payload-$BOARD
-    [ -d "$SOURCE" ] || die "no $BOARD build yet ($SOURCE is missing): run image/build.sh --boards $BOARD"
-    ;;
-esac
+# Where the files come from: --from, else a folder named on the command line, else
+# what image/build.sh left for the board.
+if [ -n "$FROM" ]; then SOURCE=$FROM
+elif [ -z "$SOURCE" ]; then
+  SOURCE=$ROOT/image/output/$BOARD/emm-payload-$BOARD
+  [ -d "$SOURCE" ] || die "no $BOARD build yet ($SOURCE is missing): run image/build.sh --boards $BOARD, or give the folder with --from"
+fi
 [ -d "$SOURCE" ] || die "not a folder: $SOURCE"
 
+# With a manifest only the files listed for the board are sent (an unpacked card
+# folder holds the kernels of every board; the others are not needed on this one).
 FILES=()
-for f in "$SOURCE"/*; do
-  [ -f "$f" ] || continue
-  case "${f##*/}" in *\'*) die "file name with a quote is not supported: ${f##*/}" ;; esac
-  FILES+=("$f")
-done
+if [ -n "$MANIFEST_DIR" ]; then
+  MANIFEST=$MANIFEST_DIR/$BOARD.txt
+  [ -f "$MANIFEST" ] || die "no list of files for $BOARD: $MANIFEST is missing"
+  while IFS= read -r name || [ -n "$name" ]; do
+    case "$name" in ""|"#"*) continue ;; esac
+    case "$name" in */*|*\'*) die "bad file name in $MANIFEST: $name" ;; esac
+    [ -f "$SOURCE/$name" ] || die "$MANIFEST lists $name, which is not in $SOURCE"
+    FILES+=("$SOURCE/$name")
+  done < "$MANIFEST"
+else
+  for f in "$SOURCE"/*; do
+    [ -f "$f" ] || continue
+    case "${f##*/}" in *\'*) die "file name with a quote is not supported: ${f##*/}" ;; esac
+    FILES+=("$f")
+  done
+fi
 [ "${#FILES[@]}" -gt 0 ] || die "no files in $SOURCE"
+
+# Order: firmware and device trees, then the system (initramfs), then the kernel, and
+# the boot configuration last. If the connection or the power goes in the middle, the
+# device still has a complete, consistent set of the older files as far as possible.
+ordered=()
+for rank in 0 1 2 3; do
+  for f in "${FILES[@]}"; do
+    case "${f##*/}" in
+      rootfs-*) r=1 ;;
+      kernel*)  r=2 ;;
+      config.txt|cmdline.txt) r=3 ;;
+      *)        r=0 ;;
+    esac
+    [ "$r" = "$rank" ] && ordered+=("$f")
+  done
+done
+FILES=("${ordered[@]}")
 
 if [ "$DRY_RUN" = 1 ]; then
   log "(dry run) would copy from $SOURCE to $TARGET:$DEST:"
@@ -160,6 +215,11 @@ for f in "${FILES[@]}"; do
     continue
   fi
   printf '  %-34s %s ... ' "$name" "$(du -h "$f" | cut -f1)" >&2
+  case "$name" in
+    config.txt|cmdline.txt)
+      # Someone may have edited these on the card: keep the old one next to the new.
+      [ -z "$have_sha" ] || "${SSH[@]}" "cp -f '$DEST/$name' '$DEST/$name.previous'" || true ;;
+  esac
   size=$(wc -c < "$f" | tr -d ' ')
   # Only rename when every byte arrived: a connection that dies mid-stream can still end cat normally.
   "${SSH_IN[@]}" "cat > '$DEST/.$name.new' && [ \$(wc -c < '$DEST/.$name.new') -eq $size ] && mv -f '$DEST/.$name.new' '$DEST/$name'" < "$f" \

@@ -22,6 +22,13 @@ A Raspberry Pi appliance that turns a USB hub full of synths into one patchbay:
 web interface, connecting a computer or phone, backups and troubleshooting. (Its
 source and a script to rebuild it are in [docs/manual/](docs/manual/).)
 
+**Just want to use it?** Download a ready-made SD-card zip, an update package or an
+installer bundle from the [Releases page](https://github.com/esbenvb/esbens-midi-mainframe/releases);
+nothing needs to be built. What each file is for is in
+[docs/INSTALL.md](docs/INSTALL.md#downloads). EMM is under the [MIT license](LICENSE)
+(the SD-card image also contains Linux and other open-source software under their
+own licenses).
+
 One Go daemon, `emmd`, does all of it. No cgo, no libasound: it reads and writes
 ALSA raw MIDI nodes directly so SysEx back-pressure is real (the ALSA sequencer
 silently drops data when a device is slower than its source — see
@@ -116,7 +123,6 @@ are the first tools to reach for.
 
 ## Not (yet) included
 
-* No `LICENSE` file has been chosen.
 * No DIN-5 MIDI (a UART HAT would fit the same backend interface).
 * No RTP-MIDI recovery journal (RFC 6295). Instead, when a UDP packet is lost or
   a network session ends or times out, EMM releases the notes that peer was

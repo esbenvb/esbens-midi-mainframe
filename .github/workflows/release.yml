@@ -1,0 +1,153 @@
+name: release
+
+# Pushing a tag such as  release/v0.1-alpha1  builds everything and publishes a GitHub
+# Release with the downloads (SD-card zips, update package, Raspberry Pi OS installer
+# bundle, binaries, manual, checksums). What each file is for: scripts/package-release.sh.
+# A "-" in the version (v0.1-alpha1, v1.0.0-rc1) marks the release as a pre-release.
+#
+# "Run workflow" (workflow_dispatch) does the same build for a test version and keeps the
+# result as a workflow artifact only; it publishes nothing.
+
+on:
+  push:
+    tags:
+      - "release/v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, for a test run that publishes nothing"
+        default: "v0.0.0-test"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            v=${GITHUB_REF_NAME#release/}
+            publish=true
+          else
+            v=$INPUT_VERSION
+            publish=false
+          fi
+          if ! [[ $v =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "::error::'$v' is not a version like v1.2.3 or v0.1-alpha1"
+            exit 1
+          fi
+          prerelease=false
+          [[ $v == *-* ]] && prerelease=true
+          {
+            echo "version=$v"
+            echo "prerelease=$prerelease"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version $v (publish=$publish, prerelease=$prerelease)"
+
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      # gofmt, go vet, tests with the race detector, script syntax, defconfigs up to
+      # date, and the cross-builds. A broken tree does not get released.
+      - run: make check
+
+  binaries:
+    needs: [version, check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: make dist VERSION=${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/emmd-linux-*
+          if-no-files-found: error
+
+  # One Buildroot build per board family, in parallel. Each takes one to two hours with a
+  # cold cache and needs far more disk than a runner offers out of the box.
+  image:
+    name: image ${{ matrix.board }}
+    needs: [version, binaries]
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false # a failed board can be re-run on its own, the others are kept
+      matrix:
+        board: [rpi3, rpi4, rpi5]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room for the build
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null
+          df -h /
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Build the ${{ matrix.board }} image
+        run: image/build.sh --boards ${{ matrix.board }} --skip-emmd-build --version ${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emm-payload-${{ matrix.board }}
+          path: image/output/${{ matrix.board }}/emm-payload-${{ matrix.board }}
+          if-no-files-found: error
+
+  publish:
+    needs: [version, binaries, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: emm-payload-*
+          path: payloads # one folder per board: payloads/emm-payload-rpi3, ...
+      - name: Assemble the downloads
+        run: |
+          scripts/package-release.sh --version "${{ needs.version.outputs.version }}" \
+            --manual docs/EMM-manual.pdf --notes "$RUNNER_TEMP/notes.md" \
+            payloads/emm-payload-rpi3 payloads/emm-payload-rpi4 payloads/emm-payload-rpi5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release/*
+          if-no-files-found: error
+      - name: Publish the release
+        if: needs.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          flags=()
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --title "Esben's MIDI Mainframe $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag "${flags[@]}"

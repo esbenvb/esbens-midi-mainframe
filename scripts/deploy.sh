@@ -50,6 +50,11 @@ done
 have ssh || die "ssh not found"
 have tar || die "tar not found"
 
+# Run from a downloaded release bundle (a prebuilt binary and no source tree): nothing to build.
+if [ "$SKIP_BUILD" = 0 ] && [ ! -f "$ROOT/go.mod" ] && [ -f "$ROOT/dist/emmd-linux-arm64" ]; then
+  SKIP_BUILD=1
+fi
+
 # shellcheck disable=SC2206  # intentional word splitting of user-supplied options
 SSH=(ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 $SSH_OPTS)
 

@@ -5,9 +5,10 @@
 # trees the builds install): the three kernels, the three initramfs files, one
 # config.txt whose [pi3]/[pi02]/[pi4]/[pi5] sections pick the right pair.
 #
-#   scripts/package-sdcard.sh [--version V] [--out DIR] [--dry-run] PAYLOAD_DIR [PAYLOAD_DIR...]
+#   scripts/package-sdcard.sh [--version V] [--out DIR] [--suffix S] [--dry-run] PAYLOAD_DIR [PAYLOAD_DIR...]
 #
-# Output: DIR/emm-sdcard-V/ (the tree) and DIR/emm-sdcard-V.zip (+ .sha256).
+# Output: DIR/emm-sdcard-V/ (the tree) and DIR/emm-sdcard-V.zip (+ .sha256). With
+# --suffix S (for example rpi4, for a zip of one board) the names are emm-sdcard-V-S.
 # Characters in V other than A-Z a-z 0-9 . _ + - (for example the "/" of a tag
 # such as release/1.0) are replaced by "-" in file names and in the README stamp.
 set -euo pipefail
@@ -18,6 +19,7 @@ ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib.sh"
 
 VERSION=""
+SUFFIX=""
 OUT="$ROOT/dist"
 PAYLOADS=()
 
@@ -25,6 +27,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --version) VERSION=${2:?}; shift 2 ;;
     --out)     OUT=${2:?}; shift 2 ;;
+    --suffix)  SUFFIX=${2:?}; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) print_usage_comment "$0"; exit 0 ;;
     -*)        die "unknown option: $1" ;;
@@ -43,7 +46,7 @@ if [ "$SAFE_VERSION" != "$VERSION" ]; then
   VERSION=$SAFE_VERSION
 fi
 
-NAME="emm-sdcard-$VERSION"
+NAME="emm-sdcard-$VERSION${SUFFIX:+-$SUFFIX}"
 TREE="$OUT/$NAME"
 
 # Every file the Pi firmware or the kernel needs for the boards we claim to support.

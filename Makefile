@@ -19,7 +19,7 @@ endif
 
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build run test vet fmt check dist dist-arm64 dist-armv7 deploy list-devices clean lint-scripts image-configs image-check image
+.PHONY: all build run test vet fmt check dist dist-arm64 dist-armv7 release-local deploy list-devices clean lint-scripts image-configs image-check image
 
 all: build
 
@@ -78,6 +78,17 @@ image-check:
 
 image: dist-arm64
 	image/build.sh
+
+# Rehearse a release on this machine: every download the release offers, from the
+# binaries in dist/ and the board payloads image/build.sh left in image/output/.
+# CI does the same from freshly built pieces (.github/workflows/release.yml).
+# RELEASE_VERSION=v0.1-alpha1 make release-local
+RELEASE_VERSION ?= $(shell git describe --tags --always 2>/dev/null | tr -c 'A-Za-z0-9._+\n-' '-')
+release-local:
+	$(MAKE) dist VERSION=$(RELEASE_VERSION)
+	scripts/package-release.sh --version "$(RELEASE_VERSION)" --manual docs/EMM-manual.pdf \
+		--notes dist/release-notes.md \
+		$(wildcard image/output/rpi3/emm-payload-rpi3 image/output/rpi4/emm-payload-rpi4 image/output/rpi5/emm-payload-rpi5)
 
 deploy:
 	@test -n "$(HOST)" || (echo "usage: make deploy HOST=pi@emm.local"; exit 1)

@@ -10,6 +10,22 @@ Two ways to run Esben's MIDI Mainframe on a Raspberry Pi 3, 4 or 5 (or Zero 2 W,
 
 Both give the same EMM: same web interface, same `emm.txt`.
 
+## Downloads
+
+Every release on the [Releases page](https://github.com/esbenvb/esbens-midi-mainframe/releases) has ready-made files, so nothing needs to be built (the version, for example `v0.1-alpha1`, is part of each name):
+
+| File | For | How to use it |
+|---|---|---|
+| `emm-sdcard-<version>.zip` | A **new SD card** for any supported Pi (3 B/B+/A+, Zero 2 W, 4, 400, CM4, 5, 500, CM5) | Format FAT32, unzip, copy the *contents* onto the card ([B](#b-appliance-sd-card)) |
+| `emm-sdcard-<version>-rpi3.zip`, `-rpi4.zip`, `-rpi5.zip` | The same, a smaller download for one board family | The same |
+| `emm-update-<version>.zip` | A Pi that **already runs the card image**: update over the network | Switch SSH on in the web interface, unzip, run `./update.sh --reboot root@emm.local` ([Updating](#updating)) |
+| `emm-pios-<version>-arm64.tar.gz` | A Pi running **Raspberry Pi OS Lite 64-bit** ([A](#a-raspberry-pi-os-lite--installer)) | Extract, run `./deploy.sh pi@raspberrypi.local` from your computer, or `./install.sh` on the Pi. No Go needed. Run it again to update |
+| `emmd-<version>-linux-arm64`, `-linux-armv7` | Your own packaging (armv7 is untested) | The daemon alone: static, the web interface is inside |
+| `EMM-manual-<version>.pdf` | Everyone | The user manual |
+| `SHA256SUMS` | Everyone | `shasum -a 256 -c SHA256SUMS` |
+
+Releases are made by pushing a tag `release/vX.Y.Z` (the workflow is `.github/workflows/release.yml`; `make release-local` makes the same files on your machine from `dist/` and `image/output/`). A version with a dash, such as `v0.1-alpha1`, is published as a pre-release.
+
 ## A. Raspberry Pi OS Lite + installer
 
 **You need** a Pi 3/4/5/Zero 2 W (a Pi 4 or 5 is strongly recommended, see [HARDWARE.md](HARDWARE.md)), an SD card, and a computer with Go ≥ 1.22 and `ssh`.
@@ -108,8 +124,9 @@ The passwords are stored in plain text on the card.
 
 ## Updating
 
-* **A:** run `scripts/deploy.sh pi@…` again. Settings stay.
-* **B:** build or download the new zip and copy its files over the old ones on the card (`kernel*.img`, `rootfs-*.cpio.gz`, `*.dtb`, `start4.elf`, `fixup4.dat`, `config.txt`, `cmdline.txt`). **Keep** `emm.txt` and the `emm/` folder.
+* **A:** run `scripts/deploy.sh pi@…` again, or `./deploy.sh pi@…` from a newer `emm-pios-…` download. Settings stay.
+* **B, over the network:** download `emm-update-<version>.zip`, switch SSH on in the web interface (System tab, set a password first), unzip it and run `./update.sh --reboot root@emm.local`. It asks the device which Raspberry Pi it is and copies only that board's files to the boot partition; `emm.txt` and the `emm/` folder are not touched, and a `config.txt` or `cmdline.txt` you changed is kept as `config.txt.previous`. Use a cable rather than WiFi if you can, do not use network MIDI for it, and do not remove power while it copies. From a checkout, `scripts/push-boot.sh --auto root@emm.local` does the same with your own build.
+* **B, by hand:** build or download the new zip and copy its files over the old ones on the card (`kernel*.img`, `rootfs-*.cpio.gz`, `*.dtb`, `start4.elf`, `fixup4.dat`, `config.txt`, `cmdline.txt`). **Keep** `emm.txt` and the `emm/` folder.
 
 ## Troubleshooting
 

@@ -83,35 +83,20 @@ jobs:
           path: dist/emmd-linux-*
           if-no-files-found: error
 
-  # One Buildroot build per board family, in parallel. Each takes one to two hours with a
-  # cold cache and needs far more disk than a runner offers out of the box.
+  # One Buildroot build per board family, in parallel (image.yml). Each takes one to two hours
+  # with a cold cache; the download and compiler cache makes the next one faster. A tag run
+  # only sees caches saved on master or on the same tag, so run this workflow by hand on
+  # master ("Run workflow") once to warm them before pushing a tag.
   image:
-    name: image ${{ matrix.board }}
     needs: [version, binaries]
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
     strategy:
       fail-fast: false # a failed board can be re-run on its own, the others are kept
       matrix:
         board: [rpi3, rpi4, rpi5]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Make room for the build
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
-          sudo docker image prune --all --force > /dev/null
-          df -h /
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
-      - name: Build the ${{ matrix.board }} image
-        run: image/build.sh --boards ${{ matrix.board }} --skip-emmd-build --version ${{ needs.version.outputs.version }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: emm-payload-${{ matrix.board }}
-          path: image/output/${{ matrix.board }}/emm-payload-${{ matrix.board }}
-          if-no-files-found: error
+    uses: ./.github/workflows/image.yml
+    with:
+      board: ${{ matrix.board }}
+      version: ${{ needs.version.outputs.version }}
 
   publish:
     needs: [version, binaries, image]

@@ -58,6 +58,8 @@ for board in "${BOARDS[@]}"; do
 
   echo "==> [$board] building (this takes a while)"
   make -C "$BR" O="$O" -j"$(nproc)"
+  # How much of the build the compiler cache answered (a warm cache is what makes reruns fast).
+  make -C "$BR" O="$O" ccache-stats 2>&1 | tail -n 20 || true
   [ -d "$O/images/emm-payload-$board" ] || { echo "payload directory missing: $O/images/emm-payload-$board" >&2; exit 1; }
   echo "==> [$board] done"
 done

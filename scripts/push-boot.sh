@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copy a build folder to the boot partition of a running EMM device over SSH.
 #
-#   scripts/push-boot.sh [--dry-run] [--reboot] [--dest DIR] [--ssh-opts "OPTS"] SOURCE root@host
+#   scripts/push-boot.sh [--dry-run] [--reboot|--restart-app] [--dest DIR] [--ssh-opts "OPTS"] SOURCE root@host
 #   scripts/push-boot.sh [--dry-run] [--reboot] [--dest DIR] [--ssh-opts "OPTS"] --auto root@host
 #   scripts/push-boot.sh ... --auto|--board rpi4 --from FOLDER [--manifest-dir DIR] root@host
 #
@@ -9,8 +9,11 @@
 # the build output; --board rpiN names the board instead of asking the device. With
 # --manifest-dir DIR only the files listed in DIR/<board>.txt are sent (the update zip
 # uses this: one folder with every board's kernel, and each device gets only its own).
-# A config.txt or cmdline.txt that differs on the device is first copied to <name>.previous.
-# Files go in this order: firmware and device trees, rootfs, kernel, then config.txt and cmdline.txt.
+# A config.txt, cmdline.txt or emmd that differs on the device is first copied to <name>.previous
+# (for emmd that is what the device falls back to if the new one does not start).
+# Files go in this order: firmware and device trees, rootfs, kernel, emmd, then config.txt and cmdline.txt.
+# emmd is the application: the image starts it from the boot partition, so it can be replaced alone.
+# --restart-app restarts it on the device after copying (no reboot needed when only emmd changed).
 #
 # SOURCE is a folder (image/output/<board>/emm-payload-<board>, an unpacked SD-card
 # zip, ...) or just a board name (rpi3, rpi4, rpi5), which means the payload that
@@ -42,6 +45,7 @@ SOURCE=""
 TARGET=""
 DEST=/boot
 REBOOT=0
+RESTART_APP=0
 AUTO=0
 FROM=""
 BOARD_OPT=""
@@ -52,6 +56,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)  DRY_RUN=1; shift ;;
     --reboot)   REBOOT=1; shift ;;
+    --restart-app) RESTART_APP=1; shift ;;
     --auto)     AUTO=1; shift ;;
     --from)     FROM=${2:?--from needs a folder}; shift 2 ;;
     --board)    BOARD_OPT=${2:?--board needs rpi3, rpi4 or rpi5}; shift 2 ;;
@@ -183,12 +188,13 @@ fi
 # the boot configuration last. If the connection or the power goes in the middle, the
 # device still has a complete, consistent set of the older files as far as possible.
 ordered=()
-for rank in 0 1 2 3; do
+for rank in 0 1 2 3 4; do
   for f in "${FILES[@]}"; do
     case "${f##*/}" in
       rootfs-*) r=1 ;;
       kernel*)  r=2 ;;
-      config.txt|cmdline.txt) r=3 ;;
+      emmd)     r=3 ;;
+      config.txt|cmdline.txt) r=4 ;;
       *)        r=0 ;;
     esac
     [ "$r" = "$rank" ] && ordered+=("$f")
@@ -200,12 +206,15 @@ if [ "$DRY_RUN" = 1 ]; then
   log "(dry run) would copy from $SOURCE to $TARGET:$DEST:"
   for f in "${FILES[@]}"; do printf '    %s\n' "${f##*/}" >&2; done
   [ "$REBOOT" = 0 ] || log "(dry run) would reboot the device afterwards"
+  [ "$RESTART_APP" = 0 ] || log "(dry run) would restart emmd on the device afterwards"
   exit 0
 fi
 
 connect
 
 copied=0
+copied_emmd=0
+copied_other=0
 for f in "${FILES[@]}"; do
   name=${f##*/}
   want=$(local_sha "$f")
@@ -216,8 +225,9 @@ for f in "${FILES[@]}"; do
   fi
   printf '  %-34s %s ... ' "$name" "$(du -h "$f" | cut -f1)" >&2
   case "$name" in
-    config.txt|cmdline.txt)
-      # Someone may have edited these on the card: keep the old one next to the new.
+    config.txt|cmdline.txt|emmd)
+      # config.txt and cmdline.txt may have been edited on the card, and the old emmd is the
+      # fallback: keep the old one next to the new.
       [ -z "$have_sha" ] || "${SSH[@]}" "cp -f '$DEST/$name' '$DEST/$name.previous'" || true ;;
   esac
   size=$(wc -c < "$f" | tr -d ' ')
@@ -228,6 +238,7 @@ for f in "${FILES[@]}"; do
   [ "$got" = "$want" ] || die "$name differs on the device after copying (checksum $got, expected $want)"
   printf 'ok\n' >&2
   copied=$((copied + 1))
+  if [ "$name" = emmd ]; then copied_emmd=1; else copied_other=1; fi
 done
 
 "${SSH[@]}" "sync"
@@ -238,5 +249,14 @@ if [ "$REBOOT" = 1 ]; then
   # The connection drops as the device goes down; that is not an error.
   "${SSH[@]}" "reboot" || true
 else
-  log "reboot the device (or run again with --reboot) for a new kernel or rootfs to take effect"
+  if [ "$RESTART_APP" = 1 ] && [ "$copied_emmd" = 1 ]; then
+    log "restarting emmd on $TARGET"
+    # The web interface restarts with it, which may drop this connection too.
+    "${SSH[@]}" "systemctl restart emmd" || true
+  fi
+  if [ "$copied_other" = 1 ]; then
+    log "reboot the device (or run again with --reboot) for a new kernel or system to take effect"
+  elif [ "$copied_emmd" = 1 ] && [ "$RESTART_APP" = 0 ]; then
+    log "restart emmd (or run again with --restart-app) for the new application to take effect"
+  fi
 fi

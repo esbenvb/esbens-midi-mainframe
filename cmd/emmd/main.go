@@ -36,6 +36,15 @@ import (
 // version is set at build time: -ldflags "-X main.version=1.2.3".
 var version = "dev"
 
+// osAPI is the number of the system interface this build of emmd expects from the image it
+// runs on (the appliance image keeps its number in /etc/emm-os-api). Raise it when a change
+// needs something new from the OS: a kernel option, a systemd unit, a package, a device path.
+// The launcher on the image (image/board/emm/overlay/usr/libexec/emm-launch) refuses to start
+// an emmd on the boot partition that needs a newer number than the installed image provides,
+// so an app-only update never runs on an OS it was not written for. The image's own number
+// is image/board/emm/os-api and must be raised together with this constant.
+const osAPI = 1
+
 type options struct {
 	listen       string
 	bootDir      string
@@ -48,6 +57,7 @@ type options struct {
 	uiDir        string
 	logLevel     string
 	showVer      bool
+	showOSAPI    bool
 	listDev      bool
 	noAnnounce   bool
 	allowedHosts string
@@ -82,6 +92,7 @@ func parseFlags(args []string) (options, error) {
 	fs.StringVar(&o.allowedHosts, "allowed-hosts", "", "extra Host names the web UI accepts, comma separated (exact names; a leading dot allows a whole domain, e.g. .mydomain.example); added to allowed_hosts from emm.txt")
 	fs.BoolVar(&o.noAnnounce, "no-announce", false, "do not publish RTP-MIDI endpoints over mDNS")
 	fs.BoolVar(&o.showVer, "version", false, "print the version and exit")
+	fs.BoolVar(&o.showOSAPI, "os-api", false, "print the system interface number this build needs from the OS image, and exit")
 	fs.BoolVar(&o.listDev, "list-devices", false, "print the MIDI devices that were found, as JSON, and exit")
 	if err := fs.Parse(args); err != nil {
 		return o, err
@@ -114,6 +125,10 @@ func main() {
 	}
 	if o.showVer {
 		fmt.Println("emmd", version)
+		return
+	}
+	if o.showOSAPI {
+		fmt.Println(osAPI)
 		return
 	}
 	log := newLogger(o.logLevel)

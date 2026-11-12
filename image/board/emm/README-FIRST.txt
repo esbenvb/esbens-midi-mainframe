@@ -30,6 +30,8 @@ What is on the card
 -------------------
   kernel_pi3.img / kernel8.img / kernel_2712.img   Linux for Pi 3 and Zero 2 W / Pi 4 / Pi 5
   rootfs-pi3.cpio.gz / rootfs-pi4.cpio.gz / rootfs-pi5.cpio.gz   the system itself (runs from RAM)
+  emmd                            the EMM application. The system starts it from here, so it can be
+                                  replaced alone (emmd.previous is kept as the fallback)
   bootcode.bin, start*.elf, fixup*.dat, *.dtb   Raspberry Pi firmware pieces and device trees
   config.txt, cmdline.txt         boot configuration
   emm.txt                         your settings (optional)

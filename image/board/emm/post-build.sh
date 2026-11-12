@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Buildroot post-build hook: put EMM into the target root filesystem.
-# Called as: post-build.sh TARGET_DIR BOARD   (BOARD from BR2_ROOTFS_POST_SCRIPT_ARGS)
-# Reads from the repository: dist/emmd-linux-arm64 and packaging/.
+# Buildroot post-build hook: put EMM's system parts into the target root filesystem.
+# Called as: post-build.sh TARGET_DIR userland   (from BR2_ROOTFS_POST_SCRIPT_ARGS)
+# Reads from the repository: packaging/ and board/emm/. The daemon itself (emmd) is NOT
+# part of the image: it is the file /boot/emmd, started by usr/libexec/emm-launch, so that
+# the image depends only on the files hashed by image/inputs-hash.sh and can be reused.
 set -euo pipefail
 
 TARGET_DIR=${1:?usage: post-build.sh TARGET_DIR BOARD}
@@ -14,10 +16,6 @@ die() { echo "post-build.sh: $*" >&2; exit 1; }
 # put MODE SRC DST: install a file, creating parent directories (no GNU-only
 # "install -D", so the script also runs on BSD for testing).
 put() { mkdir -p "$(dirname "$3")" && install -m "$1" "$2" "$3"; }
-
-BIN=${EMMD_BINARY:-$REPO/dist/emmd-linux-arm64}
-[ -f "$BIN" ] || die "$BIN not found. Build the daemon first:
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags '-s -w' -o dist/emmd-linux-arm64 ./cmd/emmd"
 
 PKG=$REPO/packaging
 for f in systemd/emmd.service systemd/emm-ssh.service avahi/emm-http.service nm/zz-emm.conf nm/zz-emm-appliance.conf \
@@ -35,7 +33,7 @@ done
 
 [ -x "$TARGET_DIR/usr/sbin/dropbear" ] || die "dropbear is not in the target: check BR2_PACKAGE_DROPBEAR in the defconfig"
 
-put 0755 "$BIN" "$TARGET_DIR/usr/bin/emmd"
+put 0644 "$EXT/board/emm/os-api" "$TARGET_DIR/etc/emm-os-api"
 put 0644 "$PKG/systemd/emmd.service" "$TARGET_DIR/usr/lib/systemd/system/emmd.service"
 put 0644 "$PKG/systemd/emm-ssh.service" "$TARGET_DIR/usr/lib/systemd/system/emm-ssh.service"
 put 0644 "$PKG/avahi/emm-http.service" "$TARGET_DIR/etc/avahi/services/emm-http.service"
@@ -69,13 +67,12 @@ ln -sf /dev/null "$TARGET_DIR/etc/systemd/system/dropbear.service"
 # Dropbear's host keys live on the boot partition (emmd points it there).
 rm -f "$TARGET_DIR/etc/dropbear"
 
-# Release stamp for support and debugging (read it on the console: cat /etc/emm-release).
-# Nothing reads it yet: the web UI's system page shows the version baked into emmd.
-version=unknown
-[ -f "$REPO/dist/VERSION" ] && version=$(cat "$REPO/dist/VERSION")
+# Stamp for support and debugging (read it on the console: cat /etc/emm-release). Only values
+# that follow from the image's inputs, never a build time or a version: the same inputs give
+# the same bytes, which is what lets a release reuse an earlier build.
 {
-  echo "EMM_VERSION=$version"
-  echo "EMM_BOARD=$BOARD"
+  echo "EMM_OS_API=$(tr -d '\n' < "$EXT/board/emm/os-api")"
+  echo "EMM_OS_INPUTS=${EMM_OS_HASH:-unknown}"
 } > "$TARGET_DIR/etc/emm-release"
 
-echo "post-build.sh: EMM $version installed for ${BOARD:-?}"
+echo "post-build.sh: EMM system installed (inputs ${EMM_OS_HASH:-unknown})"

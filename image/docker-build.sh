@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Runs INSIDE the build container (started by image/build.sh).
-#   docker-build.sh check|build BOARD...
+#   docker-build.sh check|build PART...      PART: userland (the system), rpi3, rpi4 or rpi5 (kernel parts)
 # Mounts: /work = the repository (read-only), /out = build output, /dl = download cache.
 set -euo pipefail
 
-MODE=${1:?usage: docker-build.sh check|build BOARD...}; shift
-BOARDS=("$@")
-[ "${#BOARDS[@]}" -gt 0 ] || { echo "no boards given" >&2; exit 2; }
+MODE=${1:?usage: docker-build.sh check|build PART...}; shift
+BOARDS=("$@")   # the parts to build; "board" below means any of them
+[ "${#BOARDS[@]}" -gt 0 ] || { echo "no parts given" >&2; exit 2; }
+# BR_VERSION and BR_SHA256 come from image/buildroot.env (passed in by build.sh).
 : "${BR_VERSION:?}" "${BR_SHA256:?}"
 
 OUT=/out
@@ -41,6 +42,18 @@ for board in "${BOARDS[@]}"; do
     continue
   fi
 
+  if [ "$board" = userland ]; then
+    # The system: no kernel. EMM_OS_HASH is stamped into /etc/emm-release by post-build.sh.
+    EMM_OS_HASH=$("$EXT/inputs-hash.sh" userland)
+    export EMM_OS_HASH
+    echo "==> [$board] building the system, inputs $EMM_OS_HASH (this takes a while)"
+    make -C "$BR" O="$O" -j"$(nproc)"
+    make -C "$BR" O="$O" ccache-stats 2>&1 | tail -n 20 || true
+    [ -f "$O/images/emm-os/rootfs-os.cpio.gz" ] || { echo "system archive missing: $O/images/emm-os/rootfs-os.cpio.gz" >&2; exit 1; }
+    echo "==> [$board] done"
+    continue
+  fi
+
   # Buildroot applies image/patches/linux/*.patch only when it extracts the kernel, so adding or
   # changing a patch does not touch an existing build tree. Re-extract when the patch set changed.
   psum=$(cat "$EXT"/patches/linux/*.patch 2>/dev/null | sha256sum | cut -d' ' -f1)
@@ -60,6 +73,6 @@ for board in "${BOARDS[@]}"; do
   make -C "$BR" O="$O" -j"$(nproc)"
   # How much of the build the compiler cache answered (a warm cache is what makes reruns fast).
   make -C "$BR" O="$O" ccache-stats 2>&1 | tail -n 20 || true
-  [ -d "$O/images/emm-payload-$board" ] || { echo "payload directory missing: $O/images/emm-payload-$board" >&2; exit 1; }
+  [ -d "$O/images/emm-kernel-$board" ] || { echo "kernel parts missing: $O/images/emm-kernel-$board" >&2; exit 1; }
   echo "==> [$board] done"
 done

@@ -22,8 +22,8 @@ A Raspberry Pi appliance that turns a USB hub full of synths into one patchbay:
 web interface, connecting a computer or phone, backups and troubleshooting. (Its
 source and a script to rebuild it are in [docs/manual/](docs/manual/).)
 
-**Just want to use it?** Download a ready-made SD-card zip, an update package or an
-installer bundle from the [Releases page](https://github.com/esbenvb/esbens-midi-mainframe/releases);
+**Just want to use it?** Download a ready-made SD-card zip (it also updates a
+running device) or an installer bundle from the [Releases page](https://github.com/esbenvb/esbens-midi-mainframe/releases);
 nothing needs to be built. What each file is for is in
 [docs/INSTALL.md](docs/INSTALL.md#downloads). EMM is under the [MIT license](LICENSE)
 (the SD-card image also contains Linux and other open-source software under their

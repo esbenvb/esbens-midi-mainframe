@@ -78,3 +78,50 @@ func TestSimDevicesAppearAndProduceTraffic(t *testing.T) {
 		t.Fatal("ports must be removed on shutdown")
 	}
 }
+
+func TestSimSynthAnswersSysExRequests(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := router.New(router.Options{Logger: log})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = NewSim(SimOptions{Logger: log}).Run(ctx, r) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for !r.HasPort("sim:synth") {
+		if time.Now().After(deadline) {
+			t.Fatal("sim synth did not appear")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	ch, stop, err := r.TapSysEx("sim:synth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	next := func() router.SysExCapture {
+		for {
+			select {
+			case c, ok := <-ch:
+				if !ok {
+					t.Fatal("tap closed")
+				}
+				if c.Data != nil {
+					return c
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("no SysEx from the synth")
+			}
+		}
+	}
+	if err := r.SendSysEx(ctx, "sim:synth", simIdentityRequest); err != nil {
+		t.Fatal(err)
+	}
+	if c := next(); !c.Complete || c.Data[3] != 0x06 || c.Data[4] != 0x02 {
+		t.Fatalf("identity reply: % X", c.Data)
+	}
+	if err := r.SendSysEx(ctx, "sim:synth", simDumpRequest); err != nil {
+		t.Fatal(err)
+	}
+	if c := next(); !c.Complete || len(c.Data) != 3+1024+1 || c.Data[2] != 0x02 {
+		t.Fatalf("dump: %d bytes", len(c.Data))
+	}
+}

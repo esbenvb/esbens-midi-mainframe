@@ -598,6 +598,8 @@ func TestSetupModeAuthIsNarrow(t *testing.T) {
 				{"DELETE", "/api/connections?from=" + a + "&to=" + b, "", 401},
 				{"PATCH", "/api/ports/" + a, `{"alias":"x"}`, 401},
 				{"POST", "/api/ports/" + b + "/panic", "", 401}, {"POST", "/api/ports/" + b + "/test-note", "", 401},
+				{"POST", "/api/ports/" + b + "/send", `{"data":[250]}`, 401}, {"POST", "/api/ports/" + b + "/sysex", "", 401},
+				{"GET", "/api/ports/" + b + "/sysex/listen", "", 401},
 				{"GET", "/api/rtp", "", 401}, {"POST", "/api/rtp/ports", `{"name":"x"}`, 401},
 				{"DELETE", "/api/rtp/ports/rtp:net-x", "", 401},
 				{"DELETE", "/api/network/wifi", "", 401}, {"PUT", "/api/network/ethernet", `{"mode":"auto"}`, 401},

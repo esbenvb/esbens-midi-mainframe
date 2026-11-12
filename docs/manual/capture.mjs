@@ -48,6 +48,9 @@ async function shots(base, out) {
     const view = async (w, h) => send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1.5, mobile: false });
     const ev = (expression) => send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
     await send('Page.enable');
+    // An unload handler keeps Chrome from parking old pages in its back/forward cache, where their
+    // event streams would stay open and use up the six connections a browser allows per host.
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: "addEventListener('unload', () => {})" });
     await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
     await view(1100, 720);
     const snap = async (name, clip) => {
@@ -93,7 +96,30 @@ async function shots(base, out) {
 
     await go('#devices', 2000); await snap('devices');
     await view(1100, 720);
-    await go('#monitor', 2500); await snap('monitor');
+    await view(1100, 900);
+    await go('#console', 2500); await snap('console');
+    // A dump to look at: listen to the simulated synth and ask it for its patch dump.
+    await view(1100, 730);
+    await go('#sysex', 1500);
+    await ev(`(async () => {
+      const btn = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.includes(t));
+      const from = document.getElementById('sx-from'); from.value = [...from.options].find((o) => /synth/i.test(o.text)).value; from.dispatchEvent(new Event('change'));
+      const status = () => [...document.querySelectorAll('[role=status]')].map((e) => e.innerText).join(' ');
+      const wait = async (ms) => { for (let t = 0; t < ms && !/Listening/.test(status()); t += 100) await new Promise((r) => setTimeout(r, 100)); };
+      btn('Start listening').click();
+      await wait(4000);
+      if (!/Listening/.test(status())) { btn('Stop listening').click(); btn('Start listening').click(); await wait(4000); }
+      const q = document.querySelector('input[aria-label^="Request"]'); q.value = 'F0 7D 01 F7'; q.dispatchEvent(new Event('input'));
+      btn('Send request').click();
+      await new Promise((r) => setTimeout(r, 1500));
+      const q2 = document.querySelector('input[aria-label^="Request"]'); q2.value = 'F0 7E 7F 06 01 F7'; q2.dispatchEvent(new Event('input'));
+      btn('Send request').click();
+      await new Promise((r) => setTimeout(r, 600));
+    })()`);
+    await sleep(500);
+    console.log('  sysex page: ' + JSON.stringify((await ev(`[...document.querySelectorAll('[role=status]')].map((e) => e.innerText).join(' | ')`)).result.value));
+    await snap('sysex');
+    await view(1100, 720);
     await go('#network', 3500); await view(1100, 940); await snap('network');
     await view(1100, 900);
     // Only the settings and backup cards: the device card shows the development machine.

@@ -141,6 +141,9 @@ All JSON. Errors are `{"error": "message"}` with a 4xx/5xx status.
 | `POST /api/ports/forget-offline` | forget every unplugged device; `{removed}` |
 | `POST /api/ports/{id}/panic` | All Sound Off / All Notes Off / sustain off on every channel |
 | `POST /api/ports/{id}/test-note` | middle C, ch1, for 300 ms |
+| `POST /api/ports/{id}/send` | body `{data: [bytes]}`: complete MIDI messages (no running status; SysEx allowed) sent to a **wired** (USB or simulated) output port, as validated by `midi.Validate`. 403 for network, Bluetooth and virtual ports, 400 for a malformed message, 503 if the device's queue is full |
+| `POST /api/ports/{id}/sysex[?gap_ms=N]` | body: the raw bytes of a `.syx` file (`Content-Type: application/octet-stream`, up to 16 MB; the one call that is not JSON). Sends its messages one by one to a wired output port, waiting until the device has taken each (and `gap_ms`, default 20, after it); answers `{messages, bytes}` when the last one is out. Cancelling the request stops after the message in progress and closes it with F7. One transfer per port at a time (409) |
+| `GET /api/ports/{id}/sysex/listen` | Server-Sent Events with the SysEx messages a wired input port receives (a passive tap: routing is not affected). Events `ready`, `progress {bytes}`, `sysex {data (base64), bytes, complete, overrun}`, `toolong {bytes}`, `closed` |
 | `GET /api/presets` | saved routings: `[{id, name, saved, connections}]` |
 | `POST /api/presets` | body `{name, replace?}`; saves the current connections and filters under a name (409 if the name exists and `replace` is not true) |
 | `POST /api/presets/{id}/recall` | replaces the current connections with the preset's; `{name, applied, skipped:[{from,to,reason}]}`. Connections to devices this unit has never seen (or has forgotten) are skipped |

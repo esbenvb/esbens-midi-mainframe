@@ -85,7 +85,7 @@
     <li><a href="#first">First start and network setup</a>
       <ol><li>Ethernet, WiFi and the setup network</li><li>emm.txt</li><li>Starting over</li></ol></li>
     <li><a href="#ui">The web interface</a>
-      <ol><li>Matrix</li><li>Devices</li><li>Monitor</li><li>Network</li><li>System</li></ol></li>
+      <ol><li>Matrix</li><li>Devices</li><li>Console</li><li>SysEx</li><li>Network</li><li>System</li></ol></li>
     <li><a href="#connect">Connecting a computer, phone or tablet</a>
       <ol><li>Network MIDI (RTP-MIDI)</li><li>Bluetooth MIDI</li><li>What network MIDI is not for</li></ol></li>
     <li><a href="#keep">Presets, backups and moving devices</a>
@@ -133,7 +133,8 @@
   <li><strong>Save the whole routing as a preset</strong> and bring it back with one click.</li>
   <li><strong>Reach every synth from a computer over the network</strong> (RTP-MIDI, also called AppleMIDI or network MIDI) for remote control, playing and loading a patch now and then.</li>
   <li><strong>Appear as a Bluetooth MIDI device</strong> for phones and tablets.</li>
-  <li><strong>Watch the MIDI traffic</strong> live in a monitor, and send a test note or an "all notes off" to any device.</li>
+  <li><strong>Watch the MIDI traffic</strong> live, and send MIDI by hand to a USB device: notes from an on-screen keyboard, the common messages, your own bytes.</li>
+  <li><strong>Save and send SysEx dumps</strong> from and to USB devices, as <code>.syx</code> files.</li>
   <li><strong>Back up and restore</strong> the routing, presets and device names.</li>
 </ul>
 <div class="box warn"><strong class="t">Know the limits of network MIDI</strong>
@@ -308,16 +309,31 @@ web_password  = something-private</code></pre>
   <li>The <strong>Network ports</strong> and <strong>Bluetooth</strong> cards show the network MIDI endpoints (with their UDP ports and connected peers) and the Bluetooth MIDI port. <em>Add a network port</em> creates an extra, standalone network MIDI port with a name you choose, for example a bus: connect your computer to it once, then route it to several devices in the matrix. <em>Remove</em> deletes such a port and its connections. The network ports of USB devices are controlled by the device's <em>Network port</em> switch.</li>
 </ul>
 
-<h2>Monitor</h2>
-<p>A live list of the MIDI messages passing through from the moment you open the tab (the latest 500 rows), with time, direction, port, a readable description and the raw bytes. <strong>rx</strong> is what a port received from its device, <strong>tx</strong> is what was sent out to it (with the source after the arrow).</p>
+<h2>Console</h2>
+<p>The Console tab shows the MIDI traffic and lets you send MIDI by hand. On the right is a live list of the messages passing through from the moment you open the tab (the latest 500 rows), with time, direction, port, a readable description and the raw bytes. <strong>rx</strong> is what a port received from its device, <strong>tx</strong> is what was sent out to it (with the source after the arrow; what you send from this page is marked <em>this page</em>).</p>
 <figure>
-  <img src="img/monitor.png" alt="The monitor tab listing note and control change messages">
-  <figcaption>The Monitor tab.</figcaption>
+  <img src="img/console.png" alt="The console tab: keyboard and message controls on the left, the live MIDI list on the right">
+  <figcaption>The Console tab.</figcaption>
+</figure>
+<p>On the left you choose where to send: <strong>Send to</strong> lists the devices that are plugged in with USB and can receive MIDI, and <strong>Channel</strong> is used by everything below that needs one. Network and Bluetooth ports are not offered here. <strong>Panic</strong> sends "all sound off", "all notes off" and "sustain pedal up" on every channel.</p>
+<ul>
+  <li><strong>Keyboard.</strong> Two octaves and the top C. Press, tap or slide across the keys; the <em>Octave</em> buttons move the keyboard up or down one octave (middle C is C4), and the slider sets the velocity. A note that is held is let go when you release the key, switch to another tab or leave the window.</li>
+  <li><strong>Common messages.</strong> Sliders for modulation (controller 1), volume (7), pan (10), expression (11), pitch bend (it springs back to the middle when let go) and channel aftertouch. A program change with an optional bank (controllers 0 and 32), with <em>−</em> and <em>+</em> to step through programs. Buttons for all notes off, all sound off, reset all controllers, sustain pedal, and Start, Continue, Stop, Tune request and System reset (it asks first, because some devices restart or go back to factory settings). The sliders start at fixed positions: they do not show what the device currently has.</li>
+  <li><strong>Custom message.</strong> Pick a message type and its values and the bytes are shown before you send them, or type <em>raw bytes</em> in hex, for example <code>B0 07 64</code> or <code>F0 7D 01 F7</code>. A message must be complete: a missing byte or a stray one is refused rather than sent.</li>
+  <li>The log has a <strong>Port</strong> menu that filters to one port: that port's rx and tx rows, plus the tx rows that came from it. Each entry ends with its type, for example <em>(USB)</em> or <em>(RTP-MIDI)</em>, because a device's USB port and its network port have the same name. <strong>Direction</strong> shows rx, tx or both. <strong>Pause</strong> freezes the list; <strong>Clear</strong> empties it. When you scroll up, auto-scrolling stops; <em>Jump to live</em> brings it back.</li>
+</ul>
+
+<h2>SysEx</h2>
+<p>SysEx (system exclusive) messages carry patch, setup and sample dumps that belong to one make of device. This tab receives such a dump into the browser, saves it as a <code>.syx</code> file, and sends a dump, from the browser or from a file, to a device. It works with USB devices only: a dump has to arrive complete, which network and Bluetooth MIDI cannot promise.</p>
+<figure>
+  <img src="img/sysex.png" alt="The SysEx tab with a received dump in the list of messages">
+  <figcaption>The SysEx tab, after a dump from a simulated synth.</figcaption>
 </figure>
 <ul>
-  <li>The <strong>Port</strong> menu filters to one port: that port's rx and tx rows, plus the tx rows that came from it. Each entry ends with its type, for example <em>(USB)</em> or <em>(RTP-MIDI)</em>, because a device's USB port and its network port have the same name.</li>
-  <li><strong>Direction</strong> shows rx, tx or both. <strong>Pause</strong> freezes the list; <strong>Clear</strong> empties it.</li>
-  <li>When you scroll up, auto-scrolling stops; <em>Jump to live</em> brings it back.</li>
+  <li><strong>Receive from a device.</strong> Choose the device, press <em>Start listening</em> and start the dump on the device (many have a "send" or "dump" function). Some devices only answer a request: type it in hex under <em>Request to send first</em> and press <em>Send request</em>; <em>Identity request</em> fills in the standard "who are you" message. Every message that arrives is added to the list, with its size and, where it can be told, who made it. A message that stopped before its end (F7) is marked <em>cut short</em> and cannot be sent.</li>
+  <li><strong>Messages.</strong> The list holds what you received and the files you loaded (<em>Load file…</em>, or drop files on the list). Tick what you want and press <em>Save as .syx</em> to download it as one file. The list is kept in the browser while the page is open, also when you visit other tabs; reloading the page empties it, so save what you want to keep. A file or message can be up to 16 MB.</li>
+  <li><strong>Send to a device.</strong> Sends the ticked messages. Some devices need a pause between messages: choose it next to the device. A progress bar follows the transfer and <em>Cancel</em> stops it after the message that is being sent. Sending a dump can overwrite what the device has stored, so check the device and the list first.</li>
+  <li>Listening does not interrupt the routing: what the device sends still goes on to wherever the matrix sends it.</li>
 </ul>
 
 <h2>Network</h2>

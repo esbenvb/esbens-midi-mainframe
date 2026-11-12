@@ -1,6 +1,7 @@
 package device
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"sync"
@@ -99,7 +100,7 @@ func (p *simPort) Close() error { p.once.Do(func() { close(p.done) }); return ni
 func (s *sim) devices() []simDevice {
 	return []simDevice{
 		{id: "sim:keyboard", name: "Sim Keyboard", in: true, run: runKeyboard},
-		{id: "sim:synth", name: "Sim Synth", in: true, out: true, onWrite: synthEcho, hotplug: true},
+		{id: "sim:synth", name: "Sim Synth", in: true, out: true, onWrite: synthWrite, hotplug: true},
 		{id: "sim:drums", name: "Sim Drum Machine", in: true, out: true, run: runDrums},
 		{id: "sim:sampler", name: "Sim Sampler", in: true, out: true, rate: 150_000},
 	}
@@ -204,6 +205,46 @@ func runDrums(ctx context.Context, d *simRunning) {
 		d.send([]byte{0x99, p.note, p.vel})
 		d.send([]byte{0x89, p.note, 0})
 		i++
+	}
+}
+
+// What the Sim Synth answers to, for trying the SysEx page without hardware.
+var (
+	simIdentityRequest = []byte{0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7}
+	simDumpRequest     = []byte{0xF0, 0x7D, 0x01, 0xF7} // our own: "send your patch dump"
+)
+
+// synthWrite is the Sim Synth's reaction to what it is sent: an Identity Request
+// is answered with an Identity Reply, a dump request (F0 7D 01 F7) with a dump of
+// 1 KB of made-up patch data (F0 7D 02 ... F7) sent in pieces, and a note-on
+// with a CC (see synthEcho).
+func synthWrite(d *simRunning, b []byte) {
+	switch {
+	case bytes.Equal(b, simIdentityRequest):
+		d.send([]byte{0xF0, 0x7E, 0x7F, 0x06, 0x02, 0x7D, 0x53, 0x49, 0x4D, 0x00, 0x01, 0x00, 0x00, 0x00, 0xF7})
+	case bytes.Equal(b, simDumpRequest):
+		go func() {
+			dump := []byte{0xF0, 0x7D, 0x02}
+			for i := 0; i < 1024; i++ {
+				dump = append(dump, byte(i*7)&0x7F)
+			}
+			dump = append(dump, 0xF7)
+			// A device does not mix other messages into a dump: hold the line until it is out.
+			h := d.handle.Load()
+			if h == nil {
+				return
+			}
+			d.rxMu.Lock()
+			defer d.rxMu.Unlock()
+			for len(dump) > 0 {
+				n := min(64, len(dump))
+				h.Receive(dump[:n])
+				dump = dump[n:]
+				time.Sleep(5 * time.Millisecond)
+			}
+		}()
+	default:
+		synthEcho(d, b)
 	}
 }
 

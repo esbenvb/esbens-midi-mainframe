@@ -58,6 +58,7 @@ type portState struct {
 	out    *outQueue // nil when the port cannot receive MIDI
 
 	routes atomic.Pointer[[]*conn] // connections whose source is this port
+	tap    tapSet                  // listeners for the SysEx this port receives (console.go)
 
 	rxMsgs, rxBytes, txMsgs, txBytes, dropped, errors atomic.Uint64
 	lastRx, lastTx                                    atomic.Int64 // unix nanos
@@ -184,6 +185,7 @@ func (r *Router) RemovePort(id string) {
 // retire stops a port's queue and closes the port.
 func (r *Router) retire(ps *portState) {
 	ps.removed.Store(true)
+	ps.tap.closeAll()
 	if ps.out != nil {
 		ps.out.close()
 		select {
@@ -281,6 +283,9 @@ func (r *Router) dispatch(src *portState, ev midi.Event) {
 	src.lastRx.Store(time.Now().UnixNano())
 	if r.monitorOn.Load() > 0 {
 		r.emitMonitor(src.info.ID, "rx", "", ev)
+	}
+	if ev.SysEx && src.tap.n.Load() > 0 {
+		src.tap.event(ev)
 	}
 	rs := src.routes.Load()
 	if rs == nil {
@@ -614,7 +619,15 @@ func (r *Router) Inject(to string, data []byte) error {
 	}
 	p := midi.NewParser()
 	p.MaxChunk = r.opts.SysExChunk
-	p.Feed(data, func(ev midi.Event) { ps.out.enqueue("ui", ev) })
+	refused := false
+	p.Feed(data, func(ev midi.Event) {
+		if !ps.out.enqueue("ui", ev) {
+			refused = true
+		}
+	})
+	if refused {
+		return ErrQueueFull
+	}
 	return nil
 }
 

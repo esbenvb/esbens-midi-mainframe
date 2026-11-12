@@ -134,6 +134,9 @@ type Server struct {
 
 	startOnce sync.Once
 
+	// sysexBusy holds the ports a SysEx upload is running to (one at a time per port).
+	sysexBusy sync.Map
+
 	// applyMu serialises what replaces the whole routing: a restore and a preset recall.
 	applyMu sync.Mutex
 
@@ -221,6 +224,9 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/ports/forget-offline", s.handleForgetOffline)
 	m.HandleFunc("POST /api/ports/{id}/panic", s.handlePanic)
 	m.HandleFunc("POST /api/ports/{id}/test-note", s.handleTestNote)
+	m.HandleFunc("POST /api/ports/{id}/send", s.handleSend)
+	m.HandleFunc("POST /api/ports/{id}/sysex", s.handleSysexSend)
+	m.HandleFunc("GET /api/ports/{id}/sysex/listen", s.handleSysexListen)
 
 	m.HandleFunc("GET /api/presets", s.handlePresetsGet)
 	m.HandleFunc("POST /api/presets", s.handlePresetSave)
@@ -453,7 +459,9 @@ func (s *Server) security(next http.Handler) http.Handler {
 					return
 				}
 			}
-			if r.ContentLength != 0 && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+			ct := r.Header.Get("Content-Type")
+			rawOK := isSysexUpload(r) && strings.HasPrefix(ct, "application/octet-stream") // a .syx file
+			if r.ContentLength != 0 && !rawOK && !strings.HasPrefix(ct, "application/json") {
 				writeErr(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
 				return
 			}

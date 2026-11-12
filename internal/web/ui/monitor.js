@@ -1,6 +1,6 @@
-// Live MIDI monitor. Uses its own EventSource with ?monitor=1, opened only
-// while this tab is visible (the daemon only produces monitor entries while
-// someone is listening).
+// The MIDI log of the Console tab. Uses its own EventSource with ?monitor=1,
+// opened only while the tab is visible (the daemon only produces monitor entries
+// while someone is listening).
 
 import { h, clear, replace } from './dom.js';
 import { icon } from './icons.js';
@@ -17,7 +17,7 @@ function fmtTime(t) {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 }
 
-export function mount(root) {
+export function mountLog(root) {
   let es = null;
   let paused = false;
   let auto = true;
@@ -34,7 +34,7 @@ export function mount(root) {
     h('table', { class: 'mon-table' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Time'), h('th', {}, 'Dir'), h('th', {}, 'Port'), h('th', {}, 'Message'), h('th', { class: 'col-hex' }, 'Hex'))),
       tbody));
-  const emptyMsg = h('p', { class: 'mon-empty muted' }, 'Waiting for MIDI… play a note or wiggle a knob on a connected device.');
+  const emptyMsg = h('p', { class: 'mon-empty muted' }, 'Waiting for MIDI… play a note on a connected device, or send one from here.');
   const statusEl = h('span', { class: 'mon-status muted small', role: 'status' });
   const portSel = h('select', { 'aria-label': 'Filter by port', onchange: (e) => { portFilter = e.target.value; rebuild(); } });
   const dirSel = h('select', { 'aria-label': 'Filter by direction', onchange: (e) => { dirFilter = e.target.value; rebuild(); } },
@@ -74,7 +74,7 @@ export function mount(root) {
     return h('tr', { class: `dir-${e.dir}` },
       h('td', { class: 'mono t' }, fmtTime(e.t)),
       h('td', {}, h('span', { class: 'dir-tag' }, e.dir === 'rx' ? '← rx' : '→ tx')),
-      h('td', { class: 'port-cell', title: e.port }, portName, e.dir === 'tx' && e.from ? h('small', { class: 'muted' }, ` ← ${nameOfId(e.from)}`) : null),
+      h('td', { class: 'port-cell', title: e.port }, portName, e.dir === 'tx' && e.from ? h('small', { class: 'muted' }, ` ← ${e.from === 'ui' ? 'this page' : nameOfId(e.from)}`) : null),
       h('td', {}, e.desc),
       h('td', { class: 'mono col-hex muted' }, e.hex));
   }

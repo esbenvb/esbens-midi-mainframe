@@ -49,9 +49,11 @@ if [ "$SHOTS" = 1 ]; then
   kill "$PID" 2>/dev/null || true; PID=""
 fi
 
+# A tag such as release/v0.1-alpha1 is shown as v0.1-alpha1 (and a "/" must not reach sed).
 VERSION=$(cd "$ROOT" && git describe --tags --always 2>/dev/null || echo dev)
+VERSION=${VERSION#release/}
 DATE=$(date +%Y-%m-%d)
-sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{DATE}}/$DATE/g" "$HERE/manual.html" >"$HERE/manual.build.html"
+sed -e "s|{{VERSION}}|$VERSION|g" -e "s|{{DATE}}|$DATE|g" "$HERE/manual.html" >"$HERE/manual.build.html"
 log "rendering the PDF"
 node "$HERE/capture.mjs" pdf "$HERE/manual.build.html" "$ROOT/docs/EMM-manual.pdf" "Esben's MIDI Mainframe · user manual · $VERSION"
 log "done: docs/EMM-manual.pdf"

@@ -10,7 +10,8 @@ import { initTheme, toggleTheme, currentTheme } from './theme.js';
 import './leds.js';
 import * as matrix from './matrix.js';
 import * as devices from './devices.js';
-import * as monitor from './monitor.js';
+import * as consoleTab from './console.js';
+import * as sysex from './sysex.js';
 import * as network from './network.js';
 import * as system from './system.js';
 import { mountSetup } from './setup.js';
@@ -18,7 +19,8 @@ import { mountSetup } from './setup.js';
 const TABS = [
   ['matrix', 'Matrix', matrix],
   ['devices', 'Devices', devices],
-  ['monitor', 'Monitor', monitor],
+  ['console', 'Console', consoleTab],
+  ['sysex', 'SysEx', sysex],
   ['network', 'Network', network],
   ['system', 'System', system],
 ];
@@ -83,7 +85,8 @@ function mountApp() {
   let cleanup = null;
   let first = true;
   function show() {
-    const id = (location.hash || '#matrix').slice(1);
+    let id = (location.hash || '#matrix').slice(1);
+    if (id === 'monitor') id = 'console'; // the old name of the Console tab
     const tab = TABS.find((t) => t[0] === id) || TABS[0];
     if (cleanup) { try { cleanup(); } catch (e) { console.error(e); } cleanup = null; }
     clear(view);

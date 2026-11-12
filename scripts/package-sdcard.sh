@@ -10,6 +10,9 @@
 # --app EMMD is the application (dist/emmd-linux-arm64): it goes onto the card as "emmd", where the
 # image starts it from (the image itself does not contain it; see usr/libexec/emm-launch).
 #
+# The tree also gets an update/ folder (update.sh, the push script and a list of files per board
+# present), so the same zip that makes a new card updates a running device over the network.
+#
 # Output: DIR/emm-sdcard-V/ (the tree) and DIR/emm-sdcard-V.zip (+ .sha256). With
 # --suffix S (for example rpi4, for a zip of one board) the names are emm-sdcard-V-S.
 # Characters in V other than A-Z a-z 0-9 . _ + - (for example the "/" of a tag
@@ -102,6 +105,66 @@ if [ "$DRY_RUN" != 1 ]; then
   [ "$have_pi3" = 1 ] || warn "no Pi 3 payload: this card image will not boot a Pi 3 or Zero 2 W"
   [ "$have_pi4" = 1 ] || warn "no Pi 4 payload: this card image will not boot a Pi 4, 400 or CM4"
   [ "$have_pi5" = 1 ] || warn "no Pi 5 payload: this card image will not boot a Pi 5, 500 or CM5"
+
+  # update/: what it takes to update a running device from this very tree, over SSH. The folder
+  # is a few KB and lands on the card too, which does no harm (nothing on the Pi runs it).
+  UPD="$TREE/update"
+  mkdir -p "$UPD/scripts" "$UPD/manifests"
+  cp "$SCRIPT_DIR/push-boot.sh" "$SCRIPT_DIR/lib.sh" "$UPD/scripts/"
+  for d in "${PAYLOADS[@]}"; do
+    # The board of a payload is told by its kernel. What it needs: every file of the payload (its
+    # own kernel, system and firmware plus the shared boot files), the application and the stamp.
+    if   [ -e "$d/kernel_pi3.img" ];  then b=rpi3
+    elif [ -e "$d/kernel8.img" ];     then b=rpi4
+    elif [ -e "$d/kernel_2712.img" ]; then b=rpi5
+    else continue; fi
+    { (cd "$d" && find . -maxdepth 1 -type f ! -name '.*' | sed 's|^\./||'); echo VERSION; echo emmd; } \
+      | LC_ALL=C sort -u > "$UPD/manifests/$b.txt"
+  done
+  cat > "$UPD/update.sh" <<'EOF'
+#!/usr/bin/env bash
+# Update a running EMM device (the SD-card image) over the network, with the files of this package.
+#
+#   update/update.sh [--reboot] [--dry-run] [--ssh-opts "OPTS"] root@emm.local
+#
+# First switch SSH on in the web interface (System tab) and set a password there.
+# The device is asked which Raspberry Pi it is, and only that board's files are copied to its
+# boot partition. Your settings (emm.txt and the emm/ folder) are not touched. A config.txt,
+# cmdline.txt or emmd that differs is kept as <name>.previous (emmd.previous is what the device
+# falls back to if the new emmd does not start). A new system or kernel takes effect after a
+# reboot (--reboot does that). Do not unplug the device while it copies.
+# To update only the application, which needs no reboot, use the emm-app-update package.
+# More options: update/scripts/push-boot.sh --help
+set -euo pipefail
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TREE=$(cd "$HERE/.." && pwd)
+case "${1:-}" in -h|--help) sed -n '2,/^set /p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;; esac
+pick=--auto
+for a in "$@"; do [ "$a" = --board ] && pick=""; done
+exec "$HERE/scripts/push-boot.sh" ${pick:+"$pick"} --from "$TREE" --manifest-dir "$HERE/manifests" "$@"
+EOF
+  chmod +x "$UPD/update.sh" "$UPD/scripts/push-boot.sh"
+  cat > "$UPD/README.txt" <<EOF
+Update a running device with this package
+=========================================
+
+This folder is for a device that already runs the EMM SD-card image. It updates the system,
+kernel and application of that device over the network, from the files next to this folder.
+(To put EMM on a new card you do not need it. Nothing on the Pi uses it.)
+
+  1. In the device's web interface, System tab: set a web password, then switch SSH on.
+  2. On your computer (macOS or Linux, with ssh), unzip this package. In the unzipped folder run:
+
+         update/update.sh --reboot root@emm.local
+
+     It asks for the SSH password you set, finds out which Raspberry Pi it is talking to and
+     copies that board's files. Add --dry-run first to see what would be copied.
+
+Your settings, presets and network setup stay as they are. Network MIDI (RTP-MIDI) is not
+meant for this, and neither is WiFi that comes and goes: use a cable if you can, and do not
+remove power while it copies. If something goes wrong, the SD card can always be written
+again from this package.
+EOF
 
   # Nothing the FAT32 card should not carry.
   find "$TREE" \( -name '.DS_Store' -o -name '._*' \) -delete

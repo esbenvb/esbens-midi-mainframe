@@ -40,17 +40,35 @@ check "combine: no emmd in a payload (the card gets it separately)" '[ ! -e "$P4
 "$HERE/package-release.sh" --version v9.9.9 --out "$T/rel" --dist "$T/dist" \
   "$T/pl/rpi3/emm-payload-rpi3" "$T/pl/rpi4/emm-payload-rpi4" "$T/pl/rpi5/emm-payload-rpi5" >/dev/null 2>&1
 for f in emm-sdcard-v9.9.9.zip emm-sdcard-v9.9.9-rpi3.zip emm-sdcard-v9.9.9-rpi4.zip emm-sdcard-v9.9.9-rpi5.zip \
-         emm-update-v9.9.9.zip emm-app-update-v9.9.9.zip emm-pios-v9.9.9-arm64.tar.gz emmd-v9.9.9-linux-arm64 SHA256SUMS; do
+         emm-app-update-v9.9.9.zip emm-pios-v9.9.9-arm64.tar.gz emmd-v9.9.9-linux-arm64 SHA256SUMS; do
   check "release has $f" '[ -f "$T/rel/$f" ]'
 done
 check "SHA256SUMS verifies" '(cd "$T/rel" && { sha256sum -c SHA256SUMS >/dev/null 2>&1 || shasum -a 256 -c SHA256SUMS >/dev/null 2>&1; })'
 mkdir "$T/x" && ( cd "$T/x" && unzip -q "$T/rel/emm-sdcard-v9.9.9-rpi4.zip" )
 check "card zip carries emmd and the board's files" \
   '[ -f "$T/x/emm-sdcard-v9.9.9-rpi4/emmd" ] && [ -f "$T/x/emm-sdcard-v9.9.9-rpi4/rootfs-pi4.cpio.gz" ] && [ -f "$T/x/emm-sdcard-v9.9.9-rpi4/kernel8.img" ]'
-mkdir "$T/u" && ( cd "$T/u" && unzip -q "$T/rel/emm-update-v9.9.9.zip" )
-U=$T/u/emm-update-v9.9.9
-check "update zip: the board's list has emmd, its rootfs and kernel, not another board's kernel" \
-  'grep -qx emmd "$U/manifests/rpi4.txt" && grep -qx rootfs-pi4.cpio.gz "$U/manifests/rpi4.txt" && grep -qx kernel8.img "$U/manifests/rpi4.txt" && ! grep -q kernel_2712 "$U/manifests/rpi4.txt"'
+check "no separate emm-update zip any more" '[ ! -e "$T/rel/emm-update-v9.9.9.zip" ]'
+# The card zip carries its own update/ folder.
+mkdir "$T/u" && ( cd "$T/u" && unzip -q "$T/rel/emm-sdcard-v9.9.9.zip" )
+U=$T/u/emm-sdcard-v9.9.9
+check "card zip: update/ has the script (executable), the push script and a list per board" \
+  '[ -x "$U/update/update.sh" ] && [ -x "$U/update/scripts/push-boot.sh" ] && [ -f "$U/update/scripts/lib.sh" ] && [ -f "$U/update/README.txt" ] && [ -f "$U/update/manifests/rpi3.txt" ] && [ -f "$U/update/manifests/rpi4.txt" ] && [ -f "$U/update/manifests/rpi5.txt" ]'
+check "update list: the board's files (emmd, rootfs, kernel), not another board's kernel or the update folder" \
+  'grep -qx emmd "$U/update/manifests/rpi4.txt" && grep -qx rootfs-pi4.cpio.gz "$U/update/manifests/rpi4.txt" && grep -qx kernel8.img "$U/update/manifests/rpi4.txt" && ! grep -q "kernel_2712\|update" "$U/update/manifests/rpi4.txt"'
+check "every file an update list names is in the card tree" \
+  'for b in rpi3 rpi4 rpi5; do while read -r n; do [ -f "$U/$n" ] || exit 1; done < "$U/update/manifests/$b.txt"; done'
+out=$("$U/update/update.sh" --board rpi4 --dry-run root@x 2>&1 || true)
+check "update dry run (all boards zip) sends the board's files only" \
+  'printf "%s" "$out" | grep -q "kernel8.img" && printf "%s" "$out" | grep -q "rootfs-pi4" && printf "%s" "$out" | grep -q " emmd" && ! printf "%s" "$out" | grep -q "kernel_2712\|kernel_pi3\|update"'
+# A zip for one board only updates that board.
+mkdir "$T/u4" && ( cd "$T/u4" && unzip -q "$T/rel/emm-sdcard-v9.9.9-rpi4.zip" )
+U4=$T/u4/emm-sdcard-v9.9.9-rpi4
+check "per-board zip: only its own list" '[ -f "$U4/update/manifests/rpi4.txt" ] && [ ! -e "$U4/update/manifests/rpi5.txt" ]'
+out=$("$U4/update/update.sh" --board rpi4 --dry-run root@x 2>&1 || true)
+check "per-board zip dry run works for its board" 'printf "%s" "$out" | grep -q "kernel8.img"'
+out=$("$U4/update/update.sh" --board rpi5 --dry-run root@x 2>&1 || true)
+check "per-board zip refuses another board and says what it holds" \
+  'printf "%s" "$out" | grep -q "no files for rpi5" && printf "%s" "$out" | grep -q "rpi4"'
 mkdir "$T/a" && ( cd "$T/a" && unzip -q "$T/rel/emm-app-update-v9.9.9.zip" )
 A=$T/a/emm-app-update-v9.9.9
 check "app update zip: only emmd" '[ -f "$A/boot/emmd" ] && [ "$(ls "$A/boot" | wc -l | tr -d " ")" = 1 ] && [ "$(cat "$A/manifests/rpi5.txt")" = emmd ]'

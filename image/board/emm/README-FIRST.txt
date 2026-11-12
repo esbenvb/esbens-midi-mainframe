@@ -34,6 +34,8 @@ What is on the card
                                   replaced alone (emmd.previous is kept as the fallback)
   bootcode.bin, start*.elf, fixup*.dat, *.dtb   Raspberry Pi firmware pieces and device trees
   config.txt, cmdline.txt         boot configuration
+  update/                         scripts to update a running device over the network from a computer
+                                  (see update/README.txt). Nothing on the Pi uses it.
   emm.txt                         your settings (optional)
   emm/state.json                  routing, presets and names made in the web interface (created by EMM)
   emm/system.json                 network, web password and SSH made in the web interface (secrets).

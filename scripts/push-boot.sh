@@ -5,10 +5,10 @@
 #   scripts/push-boot.sh [--dry-run] [--reboot] [--dest DIR] [--ssh-opts "OPTS"] --auto root@host
 #   scripts/push-boot.sh ... --auto|--board rpi4 --from FOLDER [--manifest-dir DIR] root@host
 #
-# --from FOLDER takes the files from FOLDER (an unpacked SD-card or update zip) instead of
+# --from FOLDER takes the files from FOLDER (an unpacked SD-card zip) instead of
 # the build output; --board rpiN names the board instead of asking the device. With
-# --manifest-dir DIR only the files listed in DIR/<board>.txt are sent (the update zip
-# uses this: one folder with every board's kernel, and each device gets only its own).
+# --manifest-dir DIR only the files listed in DIR/<board>.txt are sent (the update/ folder of
+# an SD-card zip uses this: one folder with every board's kernel, and each device gets only its own).
 # A config.txt, cmdline.txt or emmd that differs on the device is first copied to <name>.previous
 # (for emmd that is what the device falls back to if the new one does not start).
 # Files go in this order: firmware and device trees, rootfs, kernel, emmd, then config.txt and cmdline.txt.
@@ -168,7 +168,10 @@ fi
 FILES=()
 if [ -n "$MANIFEST_DIR" ]; then
   MANIFEST=$MANIFEST_DIR/$BOARD.txt
-  [ -f "$MANIFEST" ] || die "no list of files for $BOARD: $MANIFEST is missing"
+  if [ ! -f "$MANIFEST" ]; then
+    held=$(cd "$MANIFEST_DIR" 2>/dev/null && ls *.txt 2>/dev/null | sed 's/\.txt$//' | tr '\n' ' ')
+    die "this package has no files for $BOARD (it holds: ${held:-nothing}). Download the zip for your board or the one for all boards."
+  fi
   while IFS= read -r name || [ -n "$name" ]; do
     case "$name" in ""|"#"*) continue ;; esac
     case "$name" in */*|*\'*) die "bad file name in $MANIFEST: $name" ;; esac

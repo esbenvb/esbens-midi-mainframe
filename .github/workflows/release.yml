@@ -12,8 +12,9 @@ name: release
 # application (emmd) is not part of the image, so a release with only Go changes builds no image.
 #
 # "Run workflow" (workflow_dispatch) does the same for a test version and publishes no release.
-# It stores new parts too, so running it on master before pushing a tag primes both the stored
-# parts and the build cache (a tag run only sees caches saved on master or on the same tag).
+# On master it stores new parts too (from a test branch it does not), so running it on master
+# before pushing a tag primes both the stored parts and the build cache (a tag run only sees
+# caches saved on master or on the same tag).
 
 on:
   push:
@@ -192,7 +193,9 @@ jobs:
       # Store the parts this run built, so the next run with the same inputs does not build them
       # again. The release ci-components only holds these build intermediates; it is not a download
       # for users.
+      # Only from the default branch or a tag, so that a test branch cannot put anything there.
       - name: Store the new parts
+        if: github.ref_type == 'tag' || github.ref_name == github.event.repository.default_branch
         run: |
           if [ ! -s "$RUNNER_TEMP/built-here.txt" ]; then echo "nothing new to store"; exit 0; fi
           if ! gh release view ci-components --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then

@@ -40,10 +40,19 @@ export function mount(root) {
   const chanSel = h('select', { id: 'con-channel', 'aria-label': 'MIDI channel', onchange: () => { releaseAll(); cs.channel = Number(chanSel.value); } },
     Array.from({ length: 16 }, (_, i) => h('option', { value: i }, String(i + 1))));
   chanSel.value = String(cs.channel);
-  const panicBtn = h('button', { type: 'button', class: 'btn', onclick: async () => {
+  const panicBtn = h('button', { type: 'button', class: 'btn btn-small', onclick: async () => {
     if (!cs.portId) return;
     try { await post(`/api/ports/${cs.portId}/panic`); toast('Sent all-notes-off on every channel'); } catch (e) { toast(e.message, 'error'); }
   } }, icon('panic', 14), 'Panic');
+  const panicAllBtn = h('button', { type: 'button', class: 'btn btn-small btn-danger', title: 'All notes off on every channel of every USB device', onclick: async () => {
+    const ports = wiredPorts('output');
+    if (!ports.length) return;
+    releaseAll();
+    const results = await Promise.allSettled(ports.map((p) => post(`/api/ports/${p.id}/panic`)));
+    const failed = results.filter((r) => r.status === 'rejected');
+    if (failed.length) toast(`Panic failed on ${failed.length} of ${ports.length} devices: ${failed[0].reason.message}`, 'error');
+    else toast(`Sent all-notes-off to ${ports.length} device${ports.length === 1 ? '' : 's'}`);
+  } }, icon('panic', 14), 'Panic all');
   const noTarget = h('div', { class: 'notice notice-warn', role: 'note', hidden: true },
     icon('alert', 16), h('span', {}, 'No wired device that can receive MIDI is plugged in. The console sends to USB devices only, not to network or Bluetooth ports.'));
   const controls = h('div', { class: 'con-controls' });
@@ -56,6 +65,7 @@ export function mount(root) {
     targetSel.value = cs.portId;
     noTarget.hidden = ports.length > 0;
     controls.hidden = ports.length === 0;
+    panicAllBtn.disabled = ports.length === 0;
   }
 
   // ---- keyboard --------------------------------------------------------------------
@@ -226,19 +236,46 @@ export function mount(root) {
 
   // ---- custom message ------------------------------------------------------------------------
   const TYPES = {
-    noteon:  { label: 'Note On',            d1: ['Note', 0, 127], d2: ['Velocity', 0, 127], make: (c, a, b) => [0x90 | c, a, b] },
-    noteoff: { label: 'Note Off',           d1: ['Note', 0, 127], d2: ['Velocity', 0, 127], make: (c, a, b) => [0x80 | c, a, b] },
-    cc:      { label: 'Control Change',     d1: ['Controller', 0, 127], d2: ['Value', 0, 127], make: (c, a, b) => [0xB0 | c, a, b] },
-    polyat:  { label: 'Poly Aftertouch',    d1: ['Note', 0, 127], d2: ['Pressure', 0, 127], make: (c, a, b) => [0xA0 | c, a, b] },
-    program: { label: 'Program Change',     d1: ['Program', 0, 127], make: (c, a) => [0xC0 | c, a] },
-    chanat:  { label: 'Channel Aftertouch', d1: ['Pressure', 0, 127], make: (c, a) => [0xD0 | c, a] },
+    noteon:  { label: 'Note On',            d1: ['Note', 0, 127, 'note'], d2: ['Velocity', 0, 127], start: 60, make: (c, a, b) => [0x90 | c, a, b] },
+    noteoff: { label: 'Note Off',           d1: ['Note', 0, 127, 'note'], d2: ['Velocity', 0, 127], start: 60, make: (c, a, b) => [0x80 | c, a, b] },
+    cc:      { label: 'Control Change',     d1: ['Controller', 0, 127, 'cc'], d2: ['Value', 0, 127], start: 7, make: (c, a, b) => [0xB0 | c, a, b] },
+    polyat:  { label: 'Poly Aftertouch',    d1: ['Note', 0, 127, 'note'], d2: ['Pressure', 0, 127], start: 60, make: (c, a, b) => [0xA0 | c, a, b] },
+    program: { label: 'Program Change',     d1: ['Program', 0, 127, 'list'], make: (c, a) => [0xC0 | c, a] },
+    chanat:  { label: 'Channel Aftertouch', d1: ['Pressure', 0, 127, 'list'], make: (c, a) => [0xD0 | c, a] },
     bend:    { label: 'Pitch Bend',         d1: ['Bend', -8192, 8191], make: (c, a) => bend(c, a) },
     songpos: { label: 'Song Position',      d1: ['Position', 0, 16383], make: (c, a) => [0xF2, a & 127, a >> 7] },
-    songsel: { label: 'Song Select',        d1: ['Song', 0, 127], make: (c, a) => [0xF3, a] },
+    songsel: { label: 'Song Select',        d1: ['Song', 0, 127, 'list'], make: (c, a) => [0xF3, a] },
   };
   const typeSel = h('select', { 'aria-label': 'Message type', onchange: () => { cs.custom.type = typeSel.value; paintCustom(); } },
     Object.entries(TYPES).map(([k, t]) => h('option', { value: k }, t.label)));
-  const d1 = h('input', { type: 'number', step: 1, inputmode: 'numeric', oninput: () => { cs.custom.d1 = d1.value; paintCustom(); } });
+  // The first value is a menu where the values are few (128 notes with their names, controllers with
+  // theirs, plain 0-127) and a number field where they are many (pitch bend, song position).
+  const d1Num = h('input', { type: 'number', step: 1, inputmode: 'numeric', oninput: () => { cs.custom.d1 = d1Num.value; paintCustom(); } });
+  const d1Sel = h('select', { 'aria-label': 'First value', onchange: () => { cs.custom.d1 = d1Sel.value; paintCustom(); } });
+  const d1Slot = h('span', { class: 'con-d1' }, d1Sel, d1Num);
+  let d1 = d1Num; // whichever of the two is showing
+  let d1Kind = null;
+  const CC_NAMES = { 0: 'Bank select MSB', 1: 'Modulation', 2: 'Breath', 4: 'Foot pedal', 5: 'Portamento time', 6: 'Data entry MSB', 7: 'Volume', 8: 'Balance',
+    10: 'Pan', 11: 'Expression', 32: 'Bank select LSB', 38: 'Data entry LSB', 64: 'Sustain pedal', 65: 'Portamento', 66: 'Sostenuto', 67: 'Soft pedal',
+    71: 'Resonance', 72: 'Release time', 73: 'Attack time', 74: 'Cutoff / brightness', 91: 'Reverb', 93: 'Chorus', 98: 'NRPN LSB', 99: 'NRPN MSB',
+    100: 'RPN LSB', 101: 'RPN MSB', 120: 'All sound off', 121: 'Reset all controllers', 123: 'All notes off' };
+  const MENU_LABEL = {
+    note: (n) => `${noteName(n)} (${n})`,
+    cc: (n) => (CC_NAMES[n] ? `${n} – ${CC_NAMES[n]}` : String(n)),
+    list: (n) => String(n),
+  };
+  function showD1(kind) {
+    if (kind === d1Kind) return;
+    d1Kind = kind;
+    if (kind) {
+      replace(d1Sel, Array.from({ length: 128 }, (_, n) => h('option', { value: n }, MENU_LABEL[kind](n))));
+      d1 = d1Sel;
+    } else {
+      d1 = d1Num;
+    }
+    d1Sel.hidden = !kind;
+    d1Num.hidden = !!kind;
+  }
   const d2 = h('input', { type: 'number', step: 1, inputmode: 'numeric', oninput: () => { cs.custom.d2 = d2.value; paintCustom(); } });
   const d1Label = h('span', {}, ''), d2Label = h('span', {}, '');
   const preview = h('code', { class: 'con-preview' });
@@ -260,7 +297,13 @@ export function mount(root) {
     const t = TYPES[cs.custom.type];
     typeSel.value = cs.custom.type;
     d1Label.textContent = t.d1[0];
-    for (const [el, spec] of [[d1, t.d1], [d2, t.d2]]) if (spec) { el.min = spec[1]; el.max = spec[2]; }
+    showD1(t.d1[3] || null);
+    for (const [el, spec] of [[d1Num, t.d1], [d2, t.d2]]) if (spec) { el.min = spec[1]; el.max = spec[2]; }
+    if (cs.custom.type !== lastType) { // a new type: keep the value if it means the same kind of thing, else a sensible start
+      const prev = TYPES[lastType].d1[3] || null;
+      if (!prev || prev !== (t.d1[3] || null)) cs.custom.d1 = t.start ?? 0;
+      lastType = cs.custom.type;
+    }
     d1.value = String(clampTo(cs.custom.d1, t.d1));
     cs.custom.d1 = d1.value;
     d2Label.hidden = d2.hidden = !t.d2;
@@ -269,6 +312,7 @@ export function mount(root) {
     preview.textContent = b ? hex(b) : '';
     customSend.disabled = !b;
   }
+  let lastType = cs.custom.type;
   const clampTo = (v, [, lo, hi]) => { const n = Number(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n))) : lo; };
 
   const rawIn = h('input', { type: 'text', value: cs.raw, placeholder: '90 3C 64   or   F0 7D 01 F7', 'aria-label': 'Raw MIDI bytes in hex', spellcheck: 'false', autocomplete: 'off', class: 'mono',
@@ -332,7 +376,7 @@ export function mount(root) {
     h('h3', {}, 'Custom message'),
     h('div', { class: 'con-custom' },
       h('label', {}, 'Type', typeSel),
-      h('label', {}, d1Label, d1),
+      h('label', {}, d1Label, d1Slot),
       h('label', {}, d2Label, d2),
       h('div', { class: 'con-send' }, preview, customSend)),
     customErr,
@@ -350,7 +394,7 @@ export function mount(root) {
       h('div', { class: 'toolbar con-bar' },
         h('div', { class: 'field inline' }, h('label', {}, 'Send to', targetSel)),
         h('div', { class: 'field inline' }, h('label', {}, 'Channel', chanSel)),
-        panicBtn),
+        h('div', { class: 'btn-row' }, panicBtn, panicAllBtn)),
       noTarget, controls, statusEl),
     logSlot));
 

@@ -462,7 +462,8 @@ tr.dir-tx .dir-tag { color: var(--accent); }
 .console .mon-table td:nth-child(4) { white-space: nowrap; }
 @media (max-width: 1360px) { .console .col-hex { display: none; } }
 .con-send-side { display: grid; gap: 12px; min-width: 0; }
-.con-bar { margin-bottom: 0; }
+.con-bar { margin-bottom: 0; gap: 8px 12px; }
+.con-bar #con-target { max-width: 170px; }
 .con-controls { display: grid; gap: 12px; }
 .con-card { gap: 10px; }
 .con-log { min-width: 0; }
@@ -479,6 +480,7 @@ tr.dir-tx .dir-tag { color: var(--accent); }
 .con-custom { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; }
 .con-custom label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--dim); min-width: 0; }
 .con-send { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.con-d1 { display: block; min-width: 0; }
 .con-preview { min-height: 1.6em; }
 .con-raw { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .con-raw label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--dim); }

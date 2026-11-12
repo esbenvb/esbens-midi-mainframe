@@ -1,5 +1,7 @@
 # Esben's MIDI Mainframe (EMM)
 
+<p align="center"><img src="docs/img/cover.png" alt="The routing matrix of Esben's MIDI Mainframe: USB synths and controllers along the rows, their USB and network ports along the columns, a filled circle for each connection" width="720"></p>
+
 A Raspberry Pi appliance that turns a USB hub full of synths into one patchbay:
 
 * **USB MIDI host** — plug synths, controllers and interfaces into a hub on the Pi.

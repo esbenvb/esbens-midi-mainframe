@@ -1,12 +1,18 @@
 name: image
 
-# Builds the SD-card payload of ONE board with Buildroot. Called by release.yml (one call per
-# board) and nothing else; it needs the artifact "dist" (binaries) from the calling run.
+# Builds ONE part of the SD-card image with Buildroot and uploads it as a workflow artifact
+# "part-<part>" (a tar.gz named emm-<part>-<hash>.tar.gz). Called by release.yml, once per part
+# that has to be built:
+#
+#   userland   the system every board runs (no kernel, no emmd)
+#   rpi3|rpi4|rpi5   that board's kernel, device trees, GPU firmware and kernel modules
+#
+# <hash> is image/inputs-hash.sh's hash of the part's inputs: the same hash means the same inputs,
+# and release.yml then reuses an earlier result instead of calling this workflow.
 #
 # The Buildroot download folder, with the compiler cache (ccache) inside it, is saved to the
-# Actions cache after every build, also a failed one, and restored by the next one. A clean
-# build takes one to two hours; with a warm cache the compiling is answered from the cache.
-# (The whole build tree is about 14 GB per board and does not fit the 10 GB cache limit.)
+# Actions cache after every build, also a failed one, and restored by the next one. (The whole
+# build tree is 10+ GB per part and does not fit the 10 GB cache limit.)
 #
 # A tag run only sees caches saved by runs on the default branch or on the same tag, so run
 # release.yml by hand on master ("Run workflow") to warm the cache before pushing a tag.
@@ -14,17 +20,14 @@ name: image
 on:
   workflow_call:
     inputs:
-      board:
-        description: "rpi3, rpi4 or rpi5"
-        required: true
-        type: string
-      version:
+      part:
+        description: "userland, rpi3, rpi4 or rpi5"
         required: true
         type: string
 
 jobs:
   image:
-    name: image ${{ inputs.board }}
+    name: image ${{ inputs.part }}
     runs-on: ubuntu-latest
     timeout-minutes: 330
     steps:
@@ -34,31 +37,35 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
           sudo docker image prune --all --force > /dev/null
           df -h /
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
       - name: Restore the download and compiler cache
         id: cache
         uses: actions/cache/restore@v4
         with:
           path: ~/emm-dl
-          # Never an exact hit: the newest cache of this board is restored, and a new one saved.
-          key: emm-dl-${{ inputs.board }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: emm-dl-${{ inputs.board }}-
+          # Never an exact hit: the newest cache of this part is restored, and a new one saved.
+          key: emm-dl-${{ inputs.part }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: emm-dl-${{ inputs.part }}-
       - name: Cache state
         run: |
           echo "restored from: '${{ steps.cache.outputs.cache-matched-key }}'"
           du -sh ~/emm-dl 2>/dev/null || echo "no cache yet (clean build)"
-      - name: Build the ${{ inputs.board }} image
+      - name: Build ${{ inputs.part }}
         env:
-          BOARD: ${{ inputs.board }}
-          VERSION: ${{ inputs.version }}
-        run: EMM_DL_DIR="$HOME/emm-dl" image/build.sh --boards "$BOARD" --skip-emmd-build --version "$VERSION"
+          PART: ${{ inputs.part }}
+        run: EMM_DL_DIR="$HOME/emm-dl" image/build.sh --parts "$PART"
+      - name: Pack the result
+        env:
+          PART: ${{ inputs.part }}
+        run: |
+          hash=$(image/inputs-hash.sh "$PART")
+          if [ "$PART" = userland ]; then dir=emm-os; else dir=emm-kernel-$PART; fi
+          mkdir -p parts
+          tar -C "image/output/$PART" -czf "parts/emm-$PART-$hash.tar.gz" "$dir"
+          ls -l parts
       - uses: actions/upload-artifact@v4
         with:
-          name: emm-payload-${{ inputs.board }}
-          path: image/output/${{ inputs.board }}/emm-payload-${{ inputs.board }}
+          name: part-${{ inputs.part }}
+          path: parts/*.tar.gz
           if-no-files-found: error
       # Also after a failed build: the downloads and compiled objects so far are worth keeping.
       - name: Save the download and compiler cache
@@ -66,4 +73,4 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/emm-dl
-          key: emm-dl-${{ inputs.board }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: emm-dl-${{ inputs.part }}-${{ github.run_id }}-${{ github.run_attempt }}

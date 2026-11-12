@@ -11,7 +11,8 @@
 # Files written to DIR (default release/):
 #   emm-sdcard-V.zip                 SD card for any supported board (all payloads given)
 #   emm-sdcard-V-rpi3.zip ...        the same for one board
-#   emm-update-V.zip                 over-the-air update of a running device (update.sh)
+#   emm-update-V.zip                 over-the-air update of a running device: system, kernel and app
+#   emm-app-update-V.zip             over-the-air update of the application (emmd) alone: one small file
 #   emm-pios-V-arm64.tar.gz          installer bundle for Raspberry Pi OS Lite 64-bit
 #   emmd-V-linux-arm64, ...-armv7    the daemon alone
 #   EMM-manual-V.pdf                 the manual
@@ -65,12 +66,12 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
 # --- SD-card zips: all boards together, and one per board ---------------------
-"$SCRIPT_DIR/package-sdcard.sh" --version "$VERSION" --out "$WORK/sd" "${PAYLOADS[@]}"
+"$SCRIPT_DIR/package-sdcard.sh" --version "$VERSION" --out "$WORK/sd" --app "$DIST/emmd-linux-arm64" "${PAYLOADS[@]}"
 mv "$WORK/sd/emm-sdcard-$VERSION.zip" "$OUT/"
 UNIFIED_TREE="$WORK/sd/emm-sdcard-$VERSION"
 i=0
 for b in "${BOARDS[@]}"; do
-  "$SCRIPT_DIR/package-sdcard.sh" --version "$VERSION" --suffix "$b" --out "$WORK/sd-$b" "${PAYLOADS[$i]}"
+  "$SCRIPT_DIR/package-sdcard.sh" --version "$VERSION" --suffix "$b" --out "$WORK/sd-$b" --app "$DIST/emmd-linux-arm64" "${PAYLOADS[$i]}"
   mv "$WORK/sd-$b/emm-sdcard-$VERSION-$b.zip" "$OUT/"
   i=$((i + 1))
 done
@@ -83,8 +84,8 @@ cp "$SCRIPT_DIR/push-boot.sh" "$SCRIPT_DIR/lib.sh" "$UP/scripts/"
 i=0
 for b in "${BOARDS[@]}"; do
   # What the board needs: every file of its payload (its own kernel, system and
-  # firmware plus the common config files), and the VERSION stamp.
-  { (cd "${PAYLOADS[$i]}" && find . -maxdepth 1 -type f ! -name '.*' | sed 's|^\./||'); echo VERSION; } | LC_ALL=C sort -u > "$UP/manifests/$b.txt"
+  # firmware plus the common config files), the application (emmd) and the VERSION stamp.
+  { (cd "${PAYLOADS[$i]}" && find . -maxdepth 1 -type f ! -name '.*' | sed 's|^\./||'); echo VERSION; echo emmd; } | LC_ALL=C sort -u > "$UP/manifests/$b.txt"
   i=$((i + 1))
 done
 cat > "$UP/update.sh" <<'EOF'
@@ -96,8 +97,10 @@ cat > "$UP/update.sh" <<'EOF'
 # First switch SSH on in the web interface (System tab) and set a password there.
 # The device is asked which Raspberry Pi it is, and only that board's files are copied
 # to its boot partition. Your settings (emm.txt and the emm/ folder) are not touched.
-# A config.txt or cmdline.txt that differs is kept as config.txt.previous. A new system
-# takes effect after a reboot (--reboot does that). Do not unplug the device while it copies.
+# A config.txt, cmdline.txt or emmd that differs is kept as <name>.previous (emmd.previous is
+# what the device falls back to if the new emmd does not start). A new system or kernel takes
+# effect after a reboot (--reboot does that). Do not unplug the device while it copies.
+# To update only the application, which needs no reboot, use the emm-app-update package.
 # More options: ./scripts/push-boot.sh --help
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -128,6 +131,55 @@ and do not remove power while it copies. If something goes wrong, the SD card ca
 always be written again from the emm-sdcard zip.
 EOF
 (cd "$WORK" && zip -q -r -X -9 "$OUT/emm-update-$VERSION.zip" "emm-update-$VERSION")
+
+# --- App update zip: emmd alone, no reboot -----------------------------------------
+AP="$WORK/emm-app-update-$VERSION"
+mkdir -p "$AP/scripts" "$AP/boot" "$AP/manifests"
+cp "$SCRIPT_DIR/push-boot.sh" "$SCRIPT_DIR/lib.sh" "$AP/scripts/"
+cp "$DIST/emmd-linux-arm64" "$AP/boot/emmd"
+chmod +x "$AP/boot/emmd"
+for b in "${BOARDS[@]}"; do echo emmd > "$AP/manifests/$b.txt"; done
+cat > "$AP/update.sh" <<'EOF'
+#!/usr/bin/env bash
+# Update the application (emmd) of a running EMM device (the SD-card image) over the network.
+#
+#   ./update.sh [--dry-run] [--reboot] [--ssh-opts "OPTS"] root@emm.local
+#
+# First switch SSH on in the web interface (System tab) and set a password there.
+# Only /boot/emmd is copied; the system and kernel on the card are not touched. The previous
+# emmd is kept as emmd.previous and used if the new one does not start. The new emmd is started
+# right away (the web interface restarts; no reboot). Your settings are not touched.
+# This only works if the card already runs a system that this emmd supports; the application
+# says so on the device (journalctl -u emmd) and falls back to the previous one if it does not:
+# then use the emm-update package, which brings the system along.
+# More options: ./scripts/push-boot.sh --help
+set -euo pipefail
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+case "${1:-}" in -h|--help) sed -n '2,/^set /p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;; esac
+pick=--auto
+for a in "$@"; do [ "$a" = --board ] && pick=""; done
+restart=--restart-app
+for a in "$@"; do [ "$a" = --reboot ] && restart=""; done
+exec "$HERE/scripts/push-boot.sh" ${pick:+"$pick"} ${restart:+"$restart"} --from "$HERE/boot" --manifest-dir "$HERE/manifests" "$@"
+EOF
+chmod +x "$AP/update.sh" "$AP/scripts/push-boot.sh"
+cat > "$AP/README.txt" <<EOF
+Esben's MIDI Mainframe $VERSION: application update
+==================================================
+
+For a device that already runs the EMM SD-card image. It replaces only the application (emmd,
+about 10 MB) on the card: no new system, no reboot.
+
+  1. In the device's web interface, System tab: set a web password, then switch SSH on.
+  2. On your computer (macOS or Linux, with ssh), unzip this package and run:
+
+         ./update.sh root@emm.local
+
+The previous application stays on the card as emmd.previous and is used automatically if the
+new one cannot start. If this version needs a newer system than the one on the card, it will
+not start and the previous one runs instead: use the emm-update package then.
+EOF
+(cd "$WORK" && zip -q -r -X -9 "$OUT/emm-app-update-$VERSION.zip" "emm-app-update-$VERSION")
 
 # --- Raspberry Pi OS bundle: the binary, the installer and its files ----------------
 PI="$WORK/emm-pios-$VERSION-arm64"
@@ -195,7 +247,8 @@ if [ -n "$NOTES" ]; then
 |---|---|---|
 | \`emm-sdcard-$VERSION.zip\` | A **new SD card**, any supported Pi (3 B/B+/A+, Zero 2 W, 4, 400, CM4, 5, 500, CM5) | Format the card FAT32, unzip, copy the *contents* onto it, boot |
 | \`emm-sdcard-$VERSION-rpi3.zip\`, \`-rpi4.zip\`, \`-rpi5.zip\` | The same, smaller download for one board family | The same |
-| \`emm-update-$VERSION.zip\` | A Pi that **already runs the EMM card image**: update over the network | Switch SSH on in the web interface, unzip, run \`./update.sh --reboot root@emm.local\`. Settings stay |
+| \`emm-update-$VERSION.zip\` | A Pi that **already runs the EMM card image**: update system, kernel and application over the network | Switch SSH on in the web interface, unzip, run \`./update.sh --reboot root@emm.local\`. Settings stay |
+| \`emm-app-update-$VERSION.zip\` | The same Pi, when only the **application** changed (a few MB, no reboot) | The same, \`./update.sh root@emm.local\` |
 | \`emm-pios-$VERSION-arm64.tar.gz\` | A Pi running **Raspberry Pi OS Lite 64-bit** | Extract, run \`./deploy.sh pi@raspberrypi.local\` (or \`./install.sh\` on the Pi). Run it again to update |
 | \`emmd-$VERSION-linux-arm64\`, \`-armv7\` | Your own packaging (armv7 is untested) | The daemon alone, static, web interface included |
 | \`EMM-manual-$VERSION.pdf\` | Everyone | The user manual |

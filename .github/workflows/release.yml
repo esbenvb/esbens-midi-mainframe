@@ -1,12 +1,19 @@
 name: release
 
 # Pushing a tag such as  release/v0.1-alpha1  builds everything and publishes a GitHub
-# Release with the downloads (SD-card zips, update package, Raspberry Pi OS installer
+# Release with the downloads (SD-card zips, update packages, Raspberry Pi OS installer
 # bundle, binaries, manual, checksums). What each file is for: scripts/package-release.sh.
 # A "-" in the version (v0.1-alpha1, v1.0.0-rc1) marks the release as a pre-release.
 #
-# "Run workflow" (workflow_dispatch) does the same build for a test version and keeps the
-# result as a workflow artifact only; it publishes nothing.
+# The image is built in parts: the system every board runs ("userland") and each board's
+# kernel (rpi3, rpi4, rpi5), in parallel. A part is only built when its inputs changed: the
+# results are stored, named by the hash of their inputs (image/inputs-hash.sh), as assets of the
+# release "ci-components", and a later run with the same hash downloads them instead. The
+# application (emmd) is not part of the image, so a release with only Go changes builds no image.
+#
+# "Run workflow" (workflow_dispatch) does the same for a test version and publishes no release.
+# It stores new parts too, so running it on master before pushing a tag primes both the stored
+# parts and the build cache (a tag run only sees caches saved on master or on the same tag).
 
 on:
   push:
@@ -15,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to build, for a test run that publishes nothing"
+        description: "Version to build, for a test run that publishes no release"
         default: "v0.0.0-test"
 
 permissions:
@@ -64,7 +71,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      # gofmt, go vet, tests with the race detector, script syntax, defconfigs up to
+      # gofmt, go vet, tests with the race detector, script syntax and tests, defconfigs up to
       # date, and the cross-builds. A broken tree does not get released.
       - run: make check
 
@@ -83,51 +90,124 @@ jobs:
           path: dist/emmd-linux-*
           if-no-files-found: error
 
-  # One Buildroot build per board family, in parallel (image.yml). Each takes one to two hours
-  # with a cold cache; the download and compiler cache makes the next one faster. A tag run
-  # only sees caches saved on master or on the same tag, so run this workflow by hand on
-  # master ("Run workflow") once to warm them before pushing a tag.
+  # Which parts of the image have to be built: those whose input hash has no stored result.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.p.outputs.build }}
+      hashes: ${{ steps.p.outputs.hashes }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stored=$(gh release view ci-components --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)
+          build=() hashes=""
+          for part in userland rpi3 rpi4 rpi5; do
+            h=$(image/inputs-hash.sh "$part")
+            hashes="$hashes $part=$h"
+            if grep -qx "emm-$part-$h.tar.gz" <<< "$stored"; then
+              echo "$part $h: stored result, not built"
+            else
+              echo "$part $h: to be built"
+              build+=("\"$part\"")
+            fi
+          done
+          json="[$(IFS=,; echo "${build[*]:-}")]"
+          echo "build=$json" >> "$GITHUB_OUTPUT"
+          echo "hashes=${hashes# }" >> "$GITHUB_OUTPUT"
+          echo "parts to build: $json"
+
+  # One Buildroot build per part that is new, in parallel (image.yml). A cold build takes one to
+  # two hours; the download and compiler cache makes the next one faster. A tag run only sees
+  # caches saved on master or on the same tag, so run this workflow by hand on master once.
   image:
-    needs: [version, binaries]
+    needs: [plan]
+    if: needs.plan.outputs.build != '[]'
     strategy:
-      fail-fast: false # a failed board can be re-run on its own, the others are kept
+      fail-fast: false # a failed part can be re-run on its own, the others are kept
       matrix:
-        board: [rpi3, rpi4, rpi5]
+        part: ${{ fromJSON(needs.plan.outputs.build) }}
     uses: ./.github/workflows/image.yml
     with:
-      board: ${{ matrix.board }}
-      version: ${{ needs.version.outputs.version }}
+      part: ${{ matrix.part }}
 
   publish:
-    needs: [version, binaries, image]
+    needs: [version, binaries, plan, image]
+    # image is skipped when nothing had to be built; a failed image must stop the release.
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.binaries.result == 'success' && needs.plan.result == 'success' && (needs.image.result == 'success' || needs.image.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create the release
+      contents: write # create the release, store new parts in ci-components
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version.outputs.version }}
+      HASHES: ${{ needs.plan.outputs.hashes }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
-      - uses: actions/download-artifact@v4
+      - name: Fetch the parts built in this run
+        if: needs.image.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          pattern: emm-payload-*
-          path: payloads # one folder per board: payloads/emm-payload-rpi3, ...
+          pattern: part-*
+          path: parts
+          merge-multiple: true
+      - name: Fetch the parts stored by earlier runs
+        run: |
+          mkdir -p parts
+          ls parts > "$RUNNER_TEMP/built-here.txt"
+          for pair in $HASHES; do
+            part=${pair%%=*}; h=${pair#*=}
+            f=emm-$part-$h.tar.gz
+            if [ -f "parts/$f" ]; then echo "$f: built in this run"; continue; fi
+            echo "$f: from the release ci-components"
+            gh release download ci-components --repo "$GITHUB_REPOSITORY" --pattern "$f" --dir parts
+          done
+          ls -l parts
+      - name: Combine the parts per board
+        run: |
+          for pair in $HASHES; do
+            part=${pair%%=*}; h=${pair#*=}
+            mkdir -p "comp/$part"
+            tar -xzf "parts/emm-$part-$h.tar.gz" -C "comp/$part"
+          done
+          for b in rpi3 rpi4 rpi5; do
+            scripts/combine-payload.sh --out "payloads/$b" comp/userland/emm-os "comp/$b/emm-kernel-$b"
+          done
       - name: Assemble the downloads
         run: |
-          scripts/package-release.sh --version "${{ needs.version.outputs.version }}" \
+          scripts/package-release.sh --version "$VERSION" \
             --manual docs/EMM-manual.pdf --notes "$RUNNER_TEMP/notes.md" \
-            payloads/emm-payload-rpi3 payloads/emm-payload-rpi4 payloads/emm-payload-rpi5
+            payloads/rpi3/emm-payload-rpi3 payloads/rpi4/emm-payload-rpi4 payloads/rpi5/emm-payload-rpi5
       - uses: actions/upload-artifact@v4
         with:
           name: release
           path: release/*
           if-no-files-found: error
+      # Store the parts this run built, so the next run with the same inputs does not build them
+      # again. The release ci-components only holds these build intermediates; it is not a download
+      # for users.
+      - name: Store the new parts
+        run: |
+          if [ ! -s "$RUNNER_TEMP/built-here.txt" ]; then echo "nothing new to store"; exit 0; fi
+          if ! gh release view ci-components --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create ci-components --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "Build parts (CI)" \
+              --notes "Build intermediates of the release workflow, named by the hash of their inputs. Not a download for users: see the releases named v..." \
+              --target "$GITHUB_SHA"
+          fi
+          while IFS= read -r f; do
+            echo "storing $f"
+            gh release upload ci-components "parts/$f" --repo "$GITHUB_REPOSITORY" --clobber
+          done < "$RUNNER_TEMP/built-here.txt"
       - name: Publish the release
         if: needs.version.outputs.publish == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.version.outputs.version }}
           PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
           flags=()

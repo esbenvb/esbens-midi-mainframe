@@ -50,7 +50,10 @@ test:
 
 lint-scripts:
 	bash -n scripts/*.sh image/*.sh image/board/emm/*.sh
+	sh -n image/board/emm/overlay/usr/libexec/emm-launch
 	image/mkconfigs.sh --check
+	image/test-launch.sh
+	scripts/test-packaging.sh >/dev/null
 
 # Everything CI would check, including that the Linux targets still build.
 check: fmt vet test lint-scripts

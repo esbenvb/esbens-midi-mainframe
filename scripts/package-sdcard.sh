@@ -5,7 +5,10 @@
 # trees the builds install): the three kernels, the three initramfs files, one
 # config.txt whose [pi3]/[pi02]/[pi4]/[pi5] sections pick the right pair.
 #
-#   scripts/package-sdcard.sh [--version V] [--out DIR] [--suffix S] [--dry-run] PAYLOAD_DIR [PAYLOAD_DIR...]
+#   scripts/package-sdcard.sh [--version V] [--out DIR] [--suffix S] [--app EMMD] [--dry-run] PAYLOAD_DIR [PAYLOAD_DIR...]
+#
+# --app EMMD is the application (dist/emmd-linux-arm64): it goes onto the card as "emmd", where the
+# image starts it from (the image itself does not contain it; see usr/libexec/emm-launch).
 #
 # Output: DIR/emm-sdcard-V/ (the tree) and DIR/emm-sdcard-V.zip (+ .sha256). With
 # --suffix S (for example rpi4, for a zip of one board) the names are emm-sdcard-V-S.
@@ -20,6 +23,7 @@ ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
 VERSION=""
 SUFFIX=""
+APP=""
 OUT="$ROOT/dist"
 PAYLOADS=()
 
@@ -28,6 +32,7 @@ while [ $# -gt 0 ]; do
     --version) VERSION=${2:?}; shift 2 ;;
     --out)     OUT=${2:?}; shift 2 ;;
     --suffix)  SUFFIX=${2:?}; shift 2 ;;
+    --app)     APP=${2:?}; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) print_usage_comment "$0"; exit 0 ;;
     -*)        die "unknown option: $1" ;;
@@ -50,7 +55,7 @@ NAME="emm-sdcard-$VERSION${SUFFIX:+-$SUFFIX}"
 TREE="$OUT/$NAME"
 
 # Every file the Pi firmware or the kernel needs for the boards we claim to support.
-REQUIRED_COMMON=(config.txt cmdline.txt emm.txt.example README-FIRST.txt)
+REQUIRED_COMMON=(config.txt cmdline.txt emm.txt.example README-FIRST.txt emmd)
 REQUIRED_PI3=(kernel_pi3.img bootcode.bin start.elf fixup.dat rootfs-pi3.cpio.gz bcm2710-rpi-3-b.dtb bcm2710-rpi-zero-2-w.dtb)
 REQUIRED_PI4=(kernel8.img start4.elf fixup4.dat rootfs-pi4.cpio.gz bcm2711-rpi-4-b.dtb)
 REQUIRED_PI5=(kernel_2712.img rootfs-pi5.cpio.gz bcm2712-rpi-5-b.dtb bcm2712-rpi-500.dtb)
@@ -66,6 +71,11 @@ for d in "${PAYLOADS[@]}"; do
   # cp -R keeps this working with BSD cp on macOS as well as GNU cp.
   run cp -R "$d"/. "$TREE"/
 done
+
+if [ -n "$APP" ]; then
+  [ -f "$APP" ] || die "--app: $APP not found"
+  run cp "$APP" "$TREE/emmd"
+fi
 
 if [ "$DRY_RUN" != 1 ]; then
   # Version stamp in the readme.

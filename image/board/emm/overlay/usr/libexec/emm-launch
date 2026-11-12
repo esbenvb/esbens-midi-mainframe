@@ -1,0 +1,42 @@
+#!/bin/sh
+# Start the EMM application from the FAT32 boot partition.
+#
+# The application (emmd) is not part of the system image: it is the file /boot/emmd, so a
+# new version of it is one file copied to the card (scripts/push-boot.sh does that over SSH,
+# or put it there from a computer), with no new image and no new kernel. /boot/emmd.previous
+# is the build that was there before. Both are tried in that order; the first that
+#   - copies to RAM and runs (--version), and
+#   - does not need a newer system interface (--os-api) than this image has (/etc/emm-os-api)
+# is started. It runs from a copy in /run, so the SD card can be written (or pulled) while it runs.
+# Used by emmd.service through /etc/systemd/system/emmd.service.d/app-from-boot.conf.
+# EMM_BOOT, EMM_RUN and EMM_OS_API_FILE are for image/test-launch.sh; the image uses the defaults.
+BOOT=${EMM_BOOT:-/boot}
+RUN=${EMM_RUN:-/run/emm}
+APP=$RUN/emmd
+mkdir -p "$RUN" || exit 1
+have=$(cat "${EMM_OS_API_FILE:-/etc/emm-os-api}" 2>/dev/null) || have=0
+case $have in ''|*[!0-9]*) have=0 ;; esac
+
+for src in "$BOOT/emmd" "$BOOT/emmd.previous"; do
+  [ -f "$src" ] || continue
+  rm -f "$APP.tmp"
+  if ! cp "$src" "$APP.tmp" || ! chmod 0755 "$APP.tmp" || ! mv -f "$APP.tmp" "$APP"; then
+    echo "emm-launch: cannot copy $src to RAM, trying the next one" >&2
+    continue
+  fi
+  if ! "$APP" --version >/dev/null 2>&1; then
+    echo "emm-launch: $src does not run, trying the next one" >&2
+    continue
+  fi
+  need=$("$APP" --os-api 2>/dev/null) || need=0
+  case $need in ''|*[!0-9]*) need=0 ;; esac
+  if [ "$need" -gt "$have" ]; then
+    echo "emm-launch: $src needs system interface $need but this image has $have (update the image), trying the next one" >&2
+    continue
+  fi
+  echo "emm-launch: starting $src" >&2
+  exec "$APP" "$@"
+done
+
+echo "emm-launch: no usable emmd on the boot partition (looked for $BOOT/emmd and $BOOT/emmd.previous)" >&2
+exit 1

@@ -51,6 +51,10 @@ install -d -m 0755 "$TARGET_DIR/etc/avahi/services"
 # skeleton's placeholder symlink so a regular file can be created.
 rm -f "$TARGET_DIR/etc/resolv.conf"
 
+# The udev hardware database (about 10 MB) only adds vendor/model names that nothing here reads:
+# the router names USB MIDI ports from ALSA. Dropping it shrinks the initramfs and its unpacking.
+rm -f "$TARGET_DIR/usr/lib/udev/hwdb.bin" "$TARGET_DIR/etc/udev/hwdb.bin"
+
 # Enable the services. emmd pulls the other three in through Wants=, but enabling
 # them directly keeps them up if emmd is ever stopped.
 wants="$TARGET_DIR/etc/systemd/system/multi-user.target.wants"

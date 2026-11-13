@@ -35,6 +35,8 @@ BR2_ROOTFS_POST_SCRIPT_ARGS="userland"
 # Not needed on a headless box.
 # BR2_PACKAGE_SYSTEMD_VCONSOLE is not set
 BR2_PACKAGE_SYSTEMD_HOSTNAMED=y
+# systemd-analyze (blame, critical-chain): measures where boot time goes.
+BR2_PACKAGE_SYSTEMD_ANALYZE=y
 BR2_PACKAGE_SYSTEMD_TIMESYNCD=y
 # Buildroot's systemd.mk builds systemd with -Dseccomp=disabled unless libseccomp is
 # enabled (package/systemd/Config.in does not select it). packaging/systemd/emmd.service

@@ -13,3 +13,59 @@ CONFIG_RD_GZIP=y
 CONFIG_VFAT_FS=y
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ISO8859_1=y
+
+# ---- Trimmed: what a headless MIDI router does not need -------------------------------------
+# The Pi defconfigs are built for a desktop board. Everything below is switched off to cut the
+# kernel's build time and the size of its module archive (which is unpacked into RAM at every
+# boot). Kept on purpose: the HDMI console (vc4, so the boot messages show on a monitor), WiFi
+# and Bluetooth, USB (hubs, MIDI and audio class, HID keyboards, the USB Ethernet chips of the
+# Pi 3), netfilter (NetworkManager's shared mode for the setup network), thermal/hwmon (the CPU
+# temperature on the System tab) and the filesystems a USB stick may carry. A symbol that does
+# not exist in a given kernel is ignored. If a driver turns out to be missed, delete its line.
+
+# Cameras, video decoders and TV tuners.
+# CONFIG_MEDIA_SUPPORT is not set
+# Sound cards other than USB audio/MIDI (analog jack, HDMI audio, HATs).
+# CONFIG_SND_SOC is not set
+# CONFIG_SND_BCM2835 is not set
+# 3D GPU driver (the display driver vc4 stays).
+# CONFIG_DRM_V3D is not set
+# Staging drivers (cameras, VideoCore shared memory, ...).
+# CONFIG_STAGING is not set
+# Input devices that are not keyboards or mice.
+# CONFIG_INPUT_TOUCHSCREEN is not set
+# CONFIG_INPUT_JOYSTICK is not set
+# CONFIG_INPUT_TABLET is not set
+# Sensors and converters on I2C/SPI.
+# CONFIG_IIO is not set
+# USB gadget mode: the Pi is always the USB host here.
+# CONFIG_USB_GADGET is not set
+# Network and cluster filesystems, and disk filesystems nobody puts on a MIDI box.
+# CONFIG_NFS_FS is not set
+# CONFIG_NFSD is not set
+# CONFIG_CIFS is not set
+# CONFIG_BTRFS_FS is not set
+# CONFIG_XFS_FS is not set
+# CONFIG_F2FS_FS is not set
+# CONFIG_JFS_FS is not set
+# CONFIG_REISERFS_FS is not set
+# CONFIG_OCFS2_FS is not set
+# CONFIG_GFS2_FS is not set
+# CONFIG_NILFS2_FS is not set
+# Protocol families EMM never speaks.
+# CONFIG_CAN is not set
+# CONFIG_NFC is not set
+# CONFIG_HAMRADIO is not set
+# CONFIG_IEEE802154 is not set
+# CONFIG_6LOWPAN is not set
+# CONFIG_ATM is not set
+# CONFIG_BATMAN_ADV is not set
+# CONFIG_OPENVSWITCH is not set
+# CONFIG_L2TP is not set
+# CONFIG_MPLS is not set
+# CONFIG_NET_DSA is not set
+# CONFIG_CAIF is not set
+# CONFIG_RDS is not set
+# CONFIG_TIPC is not set
+# CONFIG_SCTP is not set
+# CONFIG_DCB is not set
